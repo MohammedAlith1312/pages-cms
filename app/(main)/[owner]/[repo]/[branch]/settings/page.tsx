@@ -11,6 +11,6 @@ export default function Page() {
   };
 
   return (
-    <EntryEditor path=".pages.yml" onSave={handleSave} title="menu" />
+    <EntryEditor path=".pages.yml" onSave={handleSave} title="Settings" />
   );
 }
