@@ -1,0 +1,83 @@
+PAGES CMS - PROJECT SUMMARY & ARCHITECTURE
+==========================================
+
+1. CORE ARCHITECTURAL FLOW (High Level)
+---------------------------------------
+Pages CMS is a Git-based headless CMS. GitHub is the source of truth for all content. 
+The application acts as a bridge between the browser and Git.
+
+[ USER ] <---(Web Interface)---> [ NEXT.JS SERVER ] <---(API/Git)---> [ GITHUB ]
+                                        |
+                                        | (Sync/Cache)
+                                        v
+                               [ LOCAL POSTGRES DB ]
+
+KEY FLOW STEPS:
+1. USER LOGIN: Authenticates via GitHub OAuth (using Lucia Auth).
+2. CONFIG LOADING: Server reads 'pages-cms.json' from GitHub to build the UI.
+3. PERFORMANCE: File lists/metadata are cached in PostgreSQL for speed.
+4. EDITING: User edits content in the browser using modular "Field" components.
+5. PERSISTENCE: Saving content triggers a Git Commit/Push to GitHub.
+
+
+2. STRUCTURAL FLOW DIAGRAM (ASCII representation)
+-------------------------------------------------
+
+   +--------------+         +------------------+         +-----------------+
+   |   BROWSER    | <-----> | NEXT.JS (API)    | <-----> |   GITHUB REPO   |
+   +--------------+         +---------+--------+         +-----------------+
+          ^                           | (Sync)                    ^
+          |                           v                           |
+          | (Dynamic UI)     +------------------+                 |
+          +----------------- | POSTGRES (Cache) | <---------------+
+                             +------------------+          (Webhooks)
+
+- Browser: React components, client-side state, form editors.
+- Next.js: Server actions, GitHub App auth, schema parsing.
+- Postgres: Stores user sessions, repo config, and mirrored file trees.
+- GitHub: Stores the final Markdown/JSON/YAML content files.
+
+
+3. MAIN DIRECTORY STRUCTURE
+---------------------------
+/app                -> Next.js App Router (Routes & API endpoints)
+/components         -> UI Components (Buttons, Dialogs, Shadcn/ui)
+/contexts           -> React Contexts for global app state
+/db                 -> Database Schema (Drizzle ORM) and Migrations
+/fields             -> The Editor Engine (Individual input type logic)
+/lib                -> Logic Layer (GitHub API, Config parsing, Syncing)
+/types              -> TypeScript Interface definitions
+
+
+4. ESSENTIAL FILE LIST (Must Reads)
+-----------------------------------
+FILENAME                 | PURPOSE
+-------------------------|--------------------------------------------------
+db/schema.ts             | Defines DB tables (Auth, Cache, Collaborators)
+lib/config.ts            | Parses 'pages-cms.json' to generate the CMS layout
+lib/githubCache.ts       | Handles mirroring GitHub files to the local DB
+lib/githubApp.ts         | Low-level GitHub API calls (Commits, Renames)
+fields/registry.ts       | Maps config "types" to React editor components
+app/(main)/layout.tsx    | Entry point for the authenticated dashboard UI
+package.json             | List of tech stack (Next.js, Tailwind, Drizzle)
+
+
+5. STUDY & IMPLEMENTATION PLAN
+------------------------------
+STEP 1: DATABASE
+Understand 'db/schema.ts'. It's the skeleton of the system.
+
+STEP 2: CONFIGURATION
+Learn 'lib/config.ts'. See how the app "discovers" what it needs to manage.
+
+STEP 3: FIELD ENGINE
+Browse 'fields/core'. See how one field (e.g., 'string') is built to learn the pattern.
+
+STEP 4: GIT SYNC
+Review 'lib/githubCache.ts' to understand how the app stays fast while using GitHub.
+
+STEP 5: ACTIONS
+Check 'lib/actions/'. These are the functions that actually perform the work.
+
+--------------------------------------------------------------------------------
+EOF - Project Summary Text Version
