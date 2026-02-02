@@ -7,10 +7,10 @@ import { handleEmailSignIn, handleGithubSignIn } from "@/lib/actions/auth";
 import { SubmitButton } from "@/components/submit-button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import{ Github } from "lucide-react";
+import { Github } from "lucide-react";
 
 export function SignIn() {
-  const [emailSignInState, emailSignInAction] = useFormState(handleEmailSignIn, { message: ""});
+  const [emailSignInState, emailSignInAction] = useFormState(handleEmailSignIn, { message: "" });
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const searchParams = useSearchParams();
@@ -22,7 +22,7 @@ export function SignIn() {
 
   useEffect(() => {
     if (emailSignInState?.message) {
-      toast.success(emailSignInState.message, { duration: 10000});
+      toast.success(emailSignInState.message, { duration: 10000 });
       if (emailInputRef.current) emailInputRef.current.value = "";
     }
   }, [emailSignInState]);
@@ -30,7 +30,7 @@ export function SignIn() {
   return (
     <div className="h-screen p-4 md:p-6 flex justify-center items-center">
       <div className="sm:max-w-[340px] w-full space-y-6">
-        <h1 className="text-xl lg:text-2xl font-semibold tracking-tight text-center">Sign in to Pages CMS</h1>
+        <h1 className="text-xl lg:text-2xl font-semibold tracking-tight text-center">Sign in to My CMS</h1>
         <form action={handleGithubSignIn}>
           <SubmitButton type="submit" className="w-full">
             <Github className="h-4 w-4 mr-2" />
@@ -39,14 +39,14 @@ export function SignIn() {
         </form>
         <div className="relative text-center">
           <div className="absolute inset-0 flex items-center">
-            <hr className="border-t w-full"/>
+            <hr className="border-t w-full" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
             <span className="bg-background px-2 text-muted-foreground">Or</span>
           </div>
         </div>
         <form action={emailSignInAction} className="space-y-2">
-          <Input ref={emailInputRef} type="email" name="email" placeholder="Email" required/>
+          <Input ref={emailInputRef} type="email" name="email" placeholder="Email" required />
           {emailSignInState?.error &&
             <div className="text-sm font-medium text-red-500">{emailSignInState.error}</div>
           }
