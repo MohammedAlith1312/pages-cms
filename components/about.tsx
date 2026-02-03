@@ -44,15 +44,15 @@ export function About({
         </DialogHeader>
         <footer className="grid grid-flow-col justify-stretch text-sm gap-x-2">
           <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full")} href="https://pagescms.org" target="_blank">
-            <Chrome className="h-4 w-4 shrink-0 mr-2"/>
+            <Chrome className="h-4 w-4 shrink-0 mr-2" />
             Website
           </a>
           <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full")} href="https://pagescms.org/docs" target="_blank">
-            <Book className="h-4 w-4 shrink-0 mr-2"/>
+            <Book className="h-4 w-4 shrink-0 mr-2" />
             Docs
           </a>
-          <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full")} href="https://github.com/pages-cms/pages-cms" target="_blank">
-            <Github className="h-4 w-4 shrink-0 mr-2"/>
+          <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full")} href="https://github.com/MohammedAlith1312/pages-cms" target="_blank">
+            <Github className="h-4 w-4 shrink-0 mr-2" />
             GitHub
           </a>
         </footer>
