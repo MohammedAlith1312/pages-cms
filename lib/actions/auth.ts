@@ -15,7 +15,8 @@ import { db } from "@/db";
 import { emailLoginTokenTable, userTable } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
+import { render } from "@react-email/render";
 import { LoginEmailTemplate } from "@/components/email/login";
 
 // Create a login token for the user.
@@ -48,19 +49,25 @@ const handleEmailSignIn = async (prevState: any, formData: FormData) => {
       : "";
   const loginUrl = `${baseUrl}/sign-in/collaborator/${loginToken}`;
 
-  const resend = new Resend(process.env.RESEND_API_KEY);
-
-  const { data, error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL!,
-    to: [email],
-    subject: "Sign in link for Pages CMS",
-    react: LoginEmailTemplate({
-      url: loginUrl,
-      email: email
-    }),
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
   });
 
-  if (error) throw new Error(error.message);
+  const emailHtml = await render(LoginEmailTemplate({
+    url: loginUrl,
+    email: email
+  }));
+
+  await transporter.sendMail({
+    from: `Pages CMS <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: "Sign in link for Pages CMS",
+    html: emailHtml,
+  });
 
   return { message: "We've sent you a link to sign in. If you don't see it, check your spam folder." };
 };
