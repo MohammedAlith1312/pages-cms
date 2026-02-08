@@ -26,7 +26,7 @@ const parseConfig = (content: string) => {
       yaml: error,
     };
   });
-  
+
   return { document, errors };
 };
 
@@ -47,7 +47,7 @@ const normalizeConfig = (configObject: any) => {
   if (configObjectCopy?.media) {
     if (typeof configObjectCopy.media === "string") {
       // Ensure media.input is a relative path (and add name and label)
-      const relativePath = configObjectCopy.media.replace(/^\/|\/$/g, "");
+      const relativePath = configObjectCopy.media?.replace(/^\/|\/$/g, "");
       configObjectCopy.media = [{
         name: "default",
         label: "Media",
@@ -137,14 +137,14 @@ const normalizeConfig = (configObject: any) => {
           hideDirs: "nodes"
         };
       }
-      
+
       // Process content fields to resolve component references
       if (Array.isArray(item.fields)) {
         item.fields = item.fields.map((field: any) => {
           return resolveComponent(field, configObjectCopy?.components);
         });
       }
-      
+
       return item;
     });
   }
@@ -153,7 +153,7 @@ const normalizeConfig = (configObject: any) => {
   if (configObjectCopy.settings === false) {
     configObjectCopy.settings = { hide: true };
   }
-  
+
   return configObjectCopy;
 }
 
@@ -209,7 +209,7 @@ function resolveComponent(field: any, componentsMap: Record<string, any>): any {
 function containsUnresolvedComponent(data: any): boolean {
   if (Array.isArray(data)) return data.some(item => containsUnresolvedComponent(item));
   if (data && typeof data === 'object') {
-    if (typeof data.component === 'string') return true; 
+    if (typeof data.component === 'string') return true;
     if (Array.isArray(data.fields)) {
       if (containsUnresolvedComponent(data.fields)) return true;
     }
@@ -228,11 +228,11 @@ const validateConfig = (document: YAML.Document.Parsed) => {
   } catch (zodError: any) {
     if (zodError instanceof z.ZodError) {
       zodError.errors.forEach(error => {
-        processZodError(error, document, errors);    
+        processZodError(error, document, errors);
       });
     }
   }
-  
+
   return errors;
 };
 
