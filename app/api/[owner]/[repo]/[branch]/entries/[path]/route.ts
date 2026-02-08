@@ -7,6 +7,7 @@ import { getConfig } from "@/lib/utils/config";
 import { getFileExtension, normalizePath } from "@/lib/utils/file";
 import { getAuth } from "@/lib/auth";
 import { getToken } from "@/lib/token";
+import { getIssue } from "@/lib/githubIssues";
 
 /**
  * Fetches and parses individual file contents from GitHub repositories
@@ -31,7 +32,7 @@ export async function GET(
 
     const searchParams = request.nextUrl.searchParams;
     const name = searchParams.get("name");
-    
+
     const normalizedPath = normalizePath(params.path);
 
     if (!name && normalizedPath !== ".pages.yml") throw new Error("If no content entry name is provided, the path must be \".pages.yml\".");
@@ -46,13 +47,35 @@ export async function GET(
       schema = getSchemaByName(config.object, name);
       if (!schema) throw new Error(`Schema not found for ${name}.`);
 
+      if (schema.type === "issues") {
+        const issueNumber = parseInt(normalizedPath);
+        const issue = await getIssue(token, params.owner, params.repo, issueNumber);
+
+        return Response.json({
+          status: "success",
+          data: {
+            sha: issue.node_id, // Use node_id as a pseudo-SHA
+            name: `#${issue.number} ${issue.title}`,
+            path: issue.number.toString(),
+            contentObject: {
+              title: issue.title,
+              body: issue.body,
+              number: issue.number,
+              state: issue.state,
+              labels: issue.labels.map((l: any) => l.name),
+              author: issue.user?.login,
+            }
+          }
+        });
+      }
+
       if (!normalizedPath.startsWith(schema.path)) throw new Error(`Invalid path "${params.path}" for ${schema.type} "${name}".`);
 
       if (getFileExtension(normalizedPath) !== schema.extension) throw new Error(`Invalid extension "${getFileExtension(normalizedPath)}" for ${schema.type} "${name}".`);
     } else {
       config = {};
     }
-    
+
     const octokit = createOctokitInstance(token);
     const response = await octokit.rest.repos.getContent({
       owner: params.owner,
@@ -60,7 +83,7 @@ export async function GET(
       path: normalizedPath,
       ref: params.branch
     });
-    
+
     if (Array.isArray(response.data)) {
       throw new Error("Expected a file but found a directory");
     } else if (response.data.type !== "file") {
@@ -97,7 +120,7 @@ const parseContent = (
   config: Record<string, any>
 ) => {
   const serializedTypes = ["yaml-frontmatter", "json-frontmatter", "toml-frontmatter", "yaml", "json", "toml"];
-  
+
   let contentObject: Record<string, any> = {};
 
   if (serializedTypes.includes(schema && schema.format) && schema.fields && schema.fields.length > 0) {
@@ -137,6 +160,6 @@ const parseContent = (
   } else {
     contentObject = { body: content };
   }
-  
-  return contentObject; 
+
+  return contentObject;
 };

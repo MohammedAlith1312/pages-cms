@@ -64,6 +64,13 @@ const RepoNav = ({
       label: item.label || item.name || "Media"
     })) || [];
 
+    const issuesItems = configObject.content?.filter((item: any) => item.type === "issues").map((item: any) => ({
+      key: item.name,
+      icon: <FileText className="h-5 w-5 mr-2" />, // Or a different icon like Bug or AlertCircle
+      href: `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/issues/${encodeURIComponent(item.name)}`,
+      label: item.label || item.name,
+    })) || [];
+
     const settingsItem = !configObject.settings?.hide
       ? {
         key: "settings",
@@ -85,6 +92,7 @@ const RepoNav = ({
     return [
       ...contentItems,
       ...mediaItems,
+      ...issuesItems,
       settingsItem,
       collaboratorsItem
     ].filter(Boolean);

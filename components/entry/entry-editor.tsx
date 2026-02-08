@@ -95,8 +95,8 @@ export function EntryEditor({
 
   const navigateBack = useMemo(() => {
     const parentPath = path ? getParentPath(path) : undefined;
-    return schema && schema.type === "collection"
-      ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${schema.name}${parentPath && parentPath !== schema.path ? `?path=${encodeURIComponent(parentPath)}` : ""}`
+    return schema && (schema.type === "collection" || schema.type === "issues")
+      ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${schema.name}${parentPath && parentPath !== schema.path ? `?path=${encodeURIComponent(parentPath)}` : ""}`
       : ""
   },
     [schema, config.owner, config.repo, config.branch, path]
@@ -180,7 +180,7 @@ export function EntryEditor({
 
         if (data.data.sha !== sha) setSha(data.data.sha);
 
-        if (!path && schema.type === "collection") router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(data.data.path)}`);
+        if (!path && (schema.type === "collection" || schema.type === "issues")) router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/edit/${encodeURIComponent(data.data.path)}`);
 
         resolve(data);
       } catch (error) {
@@ -206,8 +206,8 @@ export function EntryEditor({
 
   const handleDelete = (path: string) => {
     // TODO: disable save button or freeze form while deleting?
-    if (schema.type === "collection") {
-      router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}`);
+    if (schema.type === "collection" || schema.type === "issues") {
+      router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}`);
     } else {
       setRefetchTrigger(refetchTrigger + 1);
     }
@@ -215,7 +215,7 @@ export function EntryEditor({
 
   const handleRename = (oldPath: string, newPath: string) => {
     setPath(newPath);
-    router.replace(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(newPath)}`);
+    router.replace(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/edit/${encodeURIComponent(newPath)}`);
   };
 
   const loadingSkeleton = useMemo(() => (

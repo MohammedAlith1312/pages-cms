@@ -15,7 +15,7 @@ import { getSchemaByName, getPrimaryField, getFieldByPath, safeAccess } from "@/
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
 import { CollectionTable } from "./collection-table";
-import { FolderCreate} from "@/components/folder-create";
+import { FolderCreate } from "@/components/folder-create";
 import { Message } from "@/components/message";
 import { PathBreadcrumb } from "@/components/path-breadcrumb";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -64,7 +64,7 @@ export function CollectionView({
 
   const schema = useMemo(() => getSchemaByName(config?.object, name), [config, name]);
   if (!schema) throw new Error(`Schema not found for "${name}".`);
-  if (schema.type !== "collection") throw new Error(`"${name}" is not a collection.`);
+  if (schema.type !== "collection" && schema.type !== "issues") throw new Error(`"${name}" is not a collection or issues.`);
 
   const viewFields = useMemo(() => {
     let pathAndFieldArray: any[] = [];
@@ -121,10 +121,10 @@ export function CollectionView({
 
     try {
       const apiUrl = `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collections/${encodeURIComponent(name)}?path=${encodeURIComponent(fetchPath)}`;
-      
+
       const response = await fetch(apiUrl);
       if (!response.ok) {
-        if(response.status === 404 && fetchPath === (path || schema.path)) {
+        if (response.status === 404 && fetchPath === (path || schema.path)) {
           throw new Error("Not found");
         }
         throw new Error(`API Error ${response.status}`);
@@ -140,7 +140,7 @@ export function CollectionView({
       }
 
       const unsortedData = result.data.contents || [];
-      
+
       if (unsortedData.length === 0) return [];
       return unsortedData.sort((a: any, b: any) => {
         if (a.type === "dir" && b.type === "file") return schema.view?.foldersFirst ? -1 : 1;
@@ -166,14 +166,14 @@ export function CollectionView({
   const handleRename = useCallback((path: string, newPath: string) => {
     setData((prevData: any) => {
       if (!prevData) return prevData;
-      
+
       const updateNestedData = (items: any[]): any[] => {
         return items.map((item: any) => {
           // If this is the item being renamed
           if (item.path === path) {
             return { ...item, path: newPath, name: getFileName(newPath) };
           }
-          
+
           // If this item has subRows, recursively update them
           if (item.subRows && Array.isArray(item.subRows)) {
             const updatedSubRows = updateNestedData(item.subRows);
@@ -182,12 +182,12 @@ export function CollectionView({
               return { ...item, subRows: updatedSubRows };
             }
           }
-          
+
           // Return the original item if no changes
           return item;
         });
       };
-      
+
       // Check if the item is moving to a different folder
       if (getParentPath(normalizePath(path)) !== getParentPath(normalizePath(newPath))) {
         // For items moved to a different folder, we need to:
@@ -201,10 +201,10 @@ export function CollectionView({
             return true;
           });
         };
-        
+
         return sortFiles(removeItem(prevData));
       }
-      
+
       // For items renamed within the same folder, update the item
       return sortFiles(updateNestedData(prevData));
     });
@@ -219,7 +219,7 @@ export function CollectionView({
       size: 0,
       url: null,
     }
-    
+
     setData((prevData) => {
       if (!prevData) return [parent];
       return sortFiles([...prevData, parent]);
@@ -230,7 +230,7 @@ export function CollectionView({
     try {
       const normalizedPath = normalizePath(path);
       const normalizedNewPath = normalizePath(newPath);
-      
+
       const renamePromise = new Promise(async (resolve, reject) => {
         try {
           const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(normalizedPath)}/rename`, {
@@ -256,7 +256,7 @@ export function CollectionView({
       toast.promise(renamePromise, {
         loading: `Renaming "${path}" to "${newPath}"`,
         success: (data: any) => {
-          router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(getParentPath(normalizedNewPath))}`);
+          router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(getParentPath(normalizedNewPath))}`);
           return data.message;
         },
         error: (error: any) => error.message,
@@ -272,7 +272,7 @@ export function CollectionView({
       const path = pathAndField.path;
       const field = pathAndField.field;
       if (!field) return null;
-      
+
       return {
         accessorKey: path,
         accessorFn: (originalRow: any) => safeAccess(originalRow.fields, path),
@@ -281,8 +281,8 @@ export function CollectionView({
         cell: ({ cell, row }: { cell: any, row: any }) => {
           const cellValue = cell.getValue();
           const FieldComponent = viewComponents?.[field.type];
-          const CellView = FieldComponent 
-            ? <FieldComponent value={cellValue} field={field}/>
+          const CellView = FieldComponent
+            ? <FieldComponent value={cellValue} field={field} />
             : Array.isArray(cellValue)
               ? cellValue.join(', ')
               : cellValue;
@@ -290,7 +290,7 @@ export function CollectionView({
             return (
               <Link
                 className="font-medium truncate"
-                href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(row.original.path)}`}
+                href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/edit/${encodeURIComponent(row.original.path)}`}
                 prefetch={true}
               >
                 {CellView}
@@ -316,12 +316,12 @@ export function CollectionView({
             <>
               <Link
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8")}
-                href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${name}/edit/${encodeURIComponent(row.original.path)}`}
+                href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${name}/edit/${encodeURIComponent(row.original.path)}`}
                 prefetch={true}
               >
                 Edit
               </Link>
-              <FileOptions path={row.original.path} sha={row.original.sha} type="collection" name={name} onDelete={handleDelete} onRename={handleRename}>
+              <FileOptions path={row.original.path} sha={row.original.sha} type={schema.type} name={name} onDelete={handleDelete} onRename={handleRename}>
                 <Button variant="outline" size="icon-sm" className="w-8 h-8">
                   <Ellipsis className="h-4 w-4" />
                 </Button>
@@ -330,52 +330,52 @@ export function CollectionView({
           }
           {schema.view?.layout === 'tree' && (
             row.original.type === 'file' &&
-            !row.original.isNode &&
-            !(row.depth === 0 && row.original.name === schema.view?.node?.filename)
+              !row.original.isNode &&
+              !(row.depth === 0 && row.original.name === schema.view?.node?.filename)
               ? <AlertDialog>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="icon-sm" className="w-8 h-8">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Add children entry</TooltipContent>
-                  </Tooltip>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Rename this file first?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Before adding children to this file, you must rename it from &quot;{row.original.path}&quot; to 
-                        &quot;{row.original.path.replace(`.${schema.extension}`, `/${schema.view?.node?.filename}`)}&quot;.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => handleConfirmRenameNode(row.original.path, row.original.path.replace(`.${schema.extension}`, `/${schema.view?.node?.filename}`))}>Rename</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              :  <Tooltip>
+                <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link
-                      className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }), "w-8 h-8")}
-                      href={row.original.isNode
-                        ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.parentPath)}`
-                        : row.original.type === 'dir'
-                          ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.path)}`
-                          : `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.path)}`
-                      }
-                      prefetch={true}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Link>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="icon-sm" className="w-8 h-8">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>
-                    Add children entry
-                  </TooltipContent>
+                  <TooltipContent>Add children entry</TooltipContent>
                 </Tooltip>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Rename this file first?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Before adding children to this file, you must rename it from &quot;{row.original.path}&quot; to
+                      &quot;{row.original.path.replace(`.${schema.extension}`, `/${schema.view?.node?.filename}`)}&quot;.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleConfirmRenameNode(row.original.path, row.original.path.replace(`.${schema.extension}`, `/${schema.view?.node?.filename}`))}>Rename</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              : <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    className={cn(buttonVariants({ variant: "outline", size: "icon-sm" }), "w-8 h-8")}
+                    href={row.original.isNode
+                      ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.parentPath)}`
+                      : row.original.type === 'dir'
+                        ? `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.path)}`
+                        : `/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new?parent=${encodeURIComponent(row.original.path)}`
+                    }
+                    prefetch={true}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Add children entry
+                </TooltipContent>
+              </Tooltip>
           )}
         </div>
       ),
@@ -389,10 +389,10 @@ export function CollectionView({
     const sortId = viewFields == null
       ? "name"
       : (
-          schema.view?.default?.sort
-          || (viewFields.find((item: any) => item.field.name === "date") && "date")
-          || primaryField
-        );
+        schema.view?.default?.sort
+        || (viewFields.find((item: any) => item.field.name === "date") && "date")
+        || primaryField
+      );
 
     return {
       sorting: [{
@@ -463,7 +463,7 @@ export function CollectionView({
             return item;
           });
         };
-        
+
         return updateNestedData(currentData);
       });
     }
@@ -517,15 +517,15 @@ export function CollectionView({
       </tbody>
     </table>
   ), [schema.view?.layout]);
-  
+
   if (error) {
     if (error === "Not found") {
       return (
         <Message
-            title="Folder missing"
-            description={`The collection folder "${schema.path}" has not been created yet.`}
-            className="absolute inset-0"
-          >
+          title="Folder missing"
+          description={`The collection folder "${schema.path}" has not been created yet.`}
+          className="absolute inset-0"
+        >
           <EmptyCreate type="content" name={schema.name}>Create folder</EmptyCreate>
         </Message>
       );
@@ -547,51 +547,51 @@ export function CollectionView({
           <div className="sm:flex-1">
             {schema.view?.layout !== 'tree' && (
               <>
-                <PathBreadcrumb path={path || schema.path} rootPath={schema.path} handleNavigate={handleNavigate} className="hidden sm:block"/>
+                <PathBreadcrumb path={path || schema.path} rootPath={schema.path} handleNavigate={handleNavigate} className="hidden sm:block" />
                 <Button onClick={handleNavigateParent} size="icon-sm" variant="outline" className="shrink-0 sm:hidden" disabled={!path || path === schema.path}>
-                  <CornerLeftUp className="w-4 h-4"/>
+                  <CornerLeftUp className="w-4 h-4" />
                 </Button>
               </>
             )}
           </div>
           <div className="relative flex-1">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"/>
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none" />
             <Input className="h-9 pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {schema.subfolders !== false && (
             <FolderCreate path={path || schema.path} type="content" name={name} onCreate={handleFolderCreate}>
               <Button type="button" variant="outline" className="ml-auto shrink-0" size="icon-sm">
-                <FolderPlus className="h-3.5 w-3.5"/>
+                <FolderPlus className="h-3.5 w-3.5" />
               </Button>
             </FolderCreate>
           )}
           <Link
-            className={cn(buttonVariants({size: "sm"}), "hidden sm:flex")}
-            href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new${schema.view?.layout !== 'tree' && path && path !== schema.path ? `?parent=${encodeURIComponent(path)}` : ""}`}
+            className={cn(buttonVariants({ size: "sm" }), "hidden sm:flex")}
+            href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new${schema.view?.layout !== 'tree' && path && path !== schema.path ? `?parent=${encodeURIComponent(path)}` : ""}`}
           >
-              Add an entry
+            Add an entry
           </Link>
           <Link
-            className={cn(buttonVariants({size: "icon-sm"}), "sm:hidden shrink-0")}
-            href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/new${schema.view?.layout !== 'tree' && path && path !== schema.path ? `?parent=${encodeURIComponent(path)}` : ""}`}
+            className={cn(buttonVariants({ size: "icon-sm" }), "sm:hidden shrink-0")}
+            href={`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/${schema.type}/${encodeURIComponent(name)}/new${schema.view?.layout !== 'tree' && path && path !== schema.path ? `?parent=${encodeURIComponent(path)}` : ""}`}
           >
-              <Plus className="h-4 w-4"/>
+            <Plus className="h-4 w-4" />
           </Link>
         </header>
         {isLoading
           ? loadingSkeleton
           : <CollectionTable
-              columns={columns}
-              data={data}
-              search={search}
-              setSearch={setSearch}
-              initialState={initialState}
-              onExpand={handleExpand}
-              pathname={pathname}
-              path={path || schema.path}
-              isTree={schema.view?.layout === 'tree'}
-              primaryField={primaryField}
-            />
+            columns={columns}
+            data={data}
+            search={search}
+            setSearch={setSearch}
+            initialState={initialState}
+            onExpand={handleExpand}
+            pathname={pathname}
+            path={path || schema.path}
+            isTree={schema.view?.layout === 'tree'}
+            primaryField={primaryField}
+          />
         }
       </div>
     </>

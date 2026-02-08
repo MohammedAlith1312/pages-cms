@@ -117,7 +117,7 @@ const generateFieldObjectSchema = (isComponent?: boolean, isBlock?: boolean): z.
         type: z.string({
           invalid_type_error: "'type' must be a string."
         }).min(1, { message: "'type' cannot be empty." })
-          .refine(val => fieldTypes.has(val) || ['object', 'block'].includes(val), {
+          .refine(val => fieldTypes.has(val) || ['object', 'block', 'rich-text'].includes(val), {
             message: "'type' must be a valid field type.",
             path: ['type']
           })
@@ -152,14 +152,14 @@ const generateFieldObjectSchema = (isComponent?: boolean, isBlock?: boolean): z.
         ).optional(),
         blockKey: z.string({
           message: "'blockKey' must be a string."
-        }).min(1, { 
-           message: "'blockKey' cannot be empty."
+        }).min(1, {
+          message: "'blockKey' cannot be empty."
         }).optional()
       },
       ...baseObjectSchema
     }
   }
-  
+
   return z.lazy(() => z.object(baseObjectSchema).strict()
     .superRefine((data: any, ctx: any) => {
       if (!isBlock) {
@@ -219,9 +219,9 @@ const ContentObjectSchema = z.object({
   }),
   label: z.string().optional(),
   description: z.string().optional().nullable(),
-  type: z.enum(["collection", "file"], {
+  type: z.enum(["collection", "file", "issues"], {
     required_error: "'type' is required.",
-    message:  "'type' must be either 'collection' or 'file'."
+    message: "'type' must be either 'collection', 'file' or 'issues'."
   }),
   path: z.string({
     required_error: "'path' is required.",
@@ -285,7 +285,7 @@ const ContentObjectSchema = z.object({
         message: "'sort' must be a string."
       }).optional().nullable(),
       order: z.enum(["asc", "desc"], {
-        message:  "'order' must be either 'asc' or 'desc'."
+        message: "'order' must be either 'asc' or 'desc'."
       }).optional().nullable(),
     }, {
       message: "'default' must be an object with 'search', 'sort' and 'order' attributes."
@@ -297,7 +297,7 @@ const ContentObjectSchema = z.object({
     "yaml-frontmatter", "json-frontmatter", "toml-frontmatter",
     "yaml", "json", "toml", "datagrid", "code", "raw"
   ], {
-    message: "'format' must be 'yaml-frontmatter', 'json-frontmatter', 'tom-frontmatter', 'yaml', 'json', 'toml', 'datagrid', 'code' or 'raw'."
+    message: "'format' must be 'yaml-frontmatter', 'json-frontmatter', 'toml-frontmatter', 'yaml', 'json', 'toml', 'datagrid', 'code' or 'raw'."
   }).optional().nullable(),
   delimiters: z.union([
     z.array(z.string({

@@ -9,6 +9,7 @@ import { normalizePath } from "@/lib/utils/file";
 import { getAuth } from "@/lib/auth";
 import { getToken } from "@/lib/token";
 import { getCollectionCache, checkRepoAccess } from "@/lib/githubCache";
+import { getIssues } from "@/lib/githubIssues";
 
 /**
  * Fetches and parses collection contents from GitHub repositories
@@ -49,6 +50,31 @@ export async function GET(
     const fields = searchParams.get("fields")?.split(",") || ["name"];
 
     const normalizedPath = normalizePath(path);
+
+    if (schema.type === "issues") {
+      const issues = await getIssues(token, params.owner, params.repo);
+      const data = {
+        contents: issues.map((issue: any) => ({
+          name: `#${issue.number} ${issue.title}`,
+          path: issue.number.toString(),
+          type: "file",
+          fields: {
+            title: issue.title,
+            body: issue.body,
+            number: issue.number,
+            state: issue.state,
+            labels: issue.labels.map((l: any) => l.name),
+            author: issue.user.login,
+          }
+        })),
+        errors: []
+      };
+      return Response.json({
+        status: "success",
+        data
+      });
+    }
+
     if (!normalizedPath.startsWith(schema.path)) throw new Error(`Invalid path "${path}" for collection "${params.name}".`);
 
     if (schema.subfolders === false) {
@@ -56,7 +82,7 @@ export async function GET(
     }
 
     let entries = await getCollectionCache(params.owner, params.repo, params.branch, normalizedPath, token, schema.view?.node?.filename);
-    
+
     let data: {
       contents: Record<string, any>[],
       errors: string[]
@@ -85,15 +111,15 @@ export async function GET(
         );
       }
     }
-    
+
     if (entries) {
       data = parseContents(entries, schema, config);
-      
+
       // If this is a search request, filter the contents
       if (type === "search" && query) {
         const searchQuery = query.toLowerCase();
         const searchFields = Array.isArray(fields) ? fields : fields ? [fields] : [];
-        
+
         data.contents = data.contents.filter(item => {
           if (searchFields.length === 0) {
             if (
@@ -105,19 +131,19 @@ export async function GET(
 
             return item.content && item.content.toLowerCase().includes(searchQuery);
           }
-          
+
           return searchFields.some(field => {
             if (field === 'name' || field === 'path') {
               const value = item[field];
               return value && String(value).toLowerCase().includes(searchQuery);
             }
-            
+
             if (field.startsWith('fields.')) {
               const fieldPath = field.replace('fields.', '');
               const value = safeAccess(item.fields, fieldPath);
               return value && String(value).toLowerCase().includes(searchQuery);
             }
-            
+
             return false;
           });
         });
@@ -156,7 +182,7 @@ const parseContents = (
     // If it's a file and it matches the schema extension
     if (item.type === "file" && (item.path.endsWith(`.${schema.extension}`) || schema.extension === "") && !excludedFiles.includes(item.name)) {
       let contentObject: Record<string, any> = {};
-      
+
       if (serializedTypes.includes(schema.format) && schema.fields) {
         // If we are dealing with a serialized format and we have fields defined
         try {
@@ -179,7 +205,7 @@ const parseContents = (
         // If we don't have fields defined, we just add the name for display
         contentObject.name = item.name;
       }
-      
+
       // TODO: make this configurable
       // TODO: support other date formats
       if (!contentObject.date && schema.filename.startsWith("{year}-{month}-{day}")) {
@@ -189,7 +215,7 @@ const parseContents = (
           contentObject.date = filenameDate.string;
         }
       }
-      
+
       // TODO: handle proper returns
       return {
         sha: item.sha,
