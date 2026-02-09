@@ -27,22 +27,22 @@ const deepMap = (
         } else {
           result[field.name] = Array.isArray(value)
             ? value.map(item => {
-                if (field.type === "object") {
-                  return traverse(item, field.fields || []);
-                } else if (field.type === "block") {
-                  const blockKey = field.blockKey || "_block";
-                  const blockName = item?.[blockKey];
-                  const blockDef = field.blocks?.find(b => b.name === blockName);
-                  if (blockDef) {
-                    const innerResult = traverse(item, blockDef.fields || []);
-                    // Merge discriminator back after processing inner fields
-                    return { [blockKey]: blockName, ...innerResult }; 
-                  }
-                  return item;
-                } else {
-                  return apply(item, field);
+              if (field.type === "object") {
+                return traverse(item, field.fields || []);
+              } else if (field.type === "block") {
+                const blockKey = field.blockKey || "_block";
+                const blockName = item?.[blockKey];
+                const blockDef = field.blocks?.find(b => b.name === blockName);
+                if (blockDef) {
+                  const innerResult = traverse(item, blockDef.fields || []);
+                  // Merge discriminator back after processing inner fields
+                  return { [blockKey]: blockName, ...innerResult };
                 }
-              })
+                return item;
+              } else {
+                return apply(item, field);
+              }
+            })
             : [];
         }
       } else if (field.type === "object") {
@@ -62,7 +62,7 @@ const deepMap = (
         result[field.name] = apply(value, field);
       }
     });
-    
+
     return result;
   };
 
@@ -75,7 +75,7 @@ const initializeState = (
   contentObject: Record<string, any> = {}
 ): Record<string, any> => {
   if (!fields) return {};
-  
+
   // Ensure deepMap gets a valid object even if contentObject is null/undefined
   const sanitizedContent = contentObject || {};
 
@@ -90,7 +90,7 @@ const initializeState = (
     }
     // Handle potential null values passed from traverse if the object didn't exist
     else if (appliedValue === null && field.type !== 'object' && !field.list) {
-       appliedValue = getDefaultValue(field);
+      appliedValue = getDefaultValue(field);
     }
     return appliedValue;
   });
@@ -139,10 +139,10 @@ const generateZodSchema = (
               return null;
             }
             const base = z.object({
-              [discriminator]: z.literal(blockDef.name) 
+              [discriminator]: z.literal(blockDef.name)
             });
             const blockFieldsSchema = z.object(buildSchemaObject(blockDef.fields || []));
-            return base.merge(blockFieldsSchema); 
+            return base.merge(blockFieldsSchema);
           }).filter(schema => schema !== null) as z.ZodObject<any>[];
 
           if (blockTypeSchemas.length === 0) {
@@ -181,7 +181,7 @@ const generateZodSchema = (
         }
         fieldSchema = arraySchema;
       }
-      
+
       if (!field.list) {
         if (!field.required) {
           fieldSchema = fieldSchema.optional();
@@ -241,19 +241,19 @@ const sanitizeObject = (object: any): any => {
 // Retrieve the deepest matching content schema in the config for a file
 const getSchemaByPath = (config: Record<string, any>, path: string) => {
   if (!config || !config.content) return null;
-  
+
   const normalizedPath = `/${path}/`.replace(/\/\/+/g, "/");
-  
+
   // Sort the entries by the depth of their path, and normalize them
   const matches = config.content
     .map((item: Record<string, any>) => {
       const normalizedConfigPath = `/${item.path}/`.replace(/\/\/+/g, "/");
       return { ...item, path: normalizedConfigPath };
     })
-    .filter((item: Record<string, any>)  => normalizedPath.startsWith(item.path))
-    .sort((a:  Record<string, any>, b:  Record<string, any>) => b.path.length - a.path.length);
-  
-    // Return the first item in the sorted array which will be the deepest match, or undefined if no match.
+    .filter((item: Record<string, any>) => normalizedPath.startsWith(item.path))
+    .sort((a: Record<string, any>, b: Record<string, any>) => b.path.length - a.path.length);
+
+  // Return the first item in the sorted array which will be the deepest match, or undefined if no match.
   const schema = matches[0];
 
   // We deep clone the object to avoid mutating config if schema is modified.
@@ -268,7 +268,7 @@ const getSchemaByName = (config: Record<string, any> | null | undefined, name: s
     || (type === "content" && !config.content)
     || !name
   ) return null;
-  
+
   const schema = (type === "media")
     ? config.media.find((item: Record<string, any>) => item.name === name)
     : config.content.find((item: Record<string, any>) => item.name === name);
@@ -293,12 +293,12 @@ function interpolate(input: string, data: Record<string, any>, prefixFallback?: 
   return input.replace(/(?<!\\)\{([^}]+)\}/g, (_, token) => {
     // First try direct access
     let value = safeAccess(data, token);
-    
+
     // If value is undefined and we have a prefix fallback, try with prefix
     if (value === undefined && prefixFallback) {
       value = safeAccess(data, `${prefixFallback}.${token}`);
     }
-    
+
     return value !== undefined ? String(value) : '';
   }).replace(/\\([{}])/g, '$1');
 }
@@ -307,11 +307,11 @@ function interpolate(input: string, data: Record<string, any>, prefixFallback?: 
 function getFieldByPath(schema: Field[], path: string): Field | undefined {
   const [first, ...rest] = path.split('.');
   const field = schema.find(f => f.name === first);
-  
+
   return !field ? undefined
     : rest.length === 0 ? field
-    : field.type === 'object' && field.fields ? getFieldByPath(field.fields, rest.join('.'))
-    : undefined;
+      : field.type === 'object' && field.fields ? getFieldByPath(field.fields, rest.join('.'))
+        : undefined;
 }
 
 // Get the primary field for a schema
@@ -342,7 +342,7 @@ const generateFilename = (
   // Replace `{primary}` with the actual name of the primary field
   const primaryField = getPrimaryField(schema);
   pattern = pattern.replace(/\{primary\}/g, primaryField ? `{fields.${primaryField}}` : "untitled");
-  
+
   // Replace field placeholders
   return pattern.replace(/\{fields\.([^}]+)\}/g, (_, fieldName) => {
     const value = safeAccess(state, fieldName);
@@ -356,7 +356,7 @@ function getDateFromFilename(filename: string) {
   const match = filename.match(pattern);
 
   if (match) {
-    const [ , year, month, day ] = match;
+    const [, year, month, day] = match;
     const date = new Date(`${year}-${month}-${day}`);
     if (!isNaN(date.getTime())) {
       return { year, month, day, string: `${year}-${month}-${day}` };

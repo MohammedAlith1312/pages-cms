@@ -56,9 +56,19 @@ import {
   Strikethrough,
   Table as TableIcon,
   Trash2,
-  Underline as UnderlineIcon
+  Underline as UnderlineIcon,
+  Bug
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { getSchemaByName } from "@/lib/schema";
 import { extensionCategories, normalizePath } from "@/lib/utils/file";
 
@@ -81,7 +91,7 @@ const EditComponent = forwardRef((props: any, ref) => {
 
     let extensions = extensionCategories['image'];
 
-    const fieldExtensions = field.options?.extensions 
+    const fieldExtensions = field.options?.extensions
       ? field.options.extensions
       : field.options?.categories
         ? field.options.categories.flatMap((category: string) => extensionCategories[category])
@@ -108,6 +118,9 @@ const EditComponent = forwardRef((props: any, ref) => {
 
   const [linkUrl, setLinkUrl] = useState("");
   const [imageAlt, setImageAlt] = useState("");
+  const [isIssueDialogOpen, setIsIssueDialogOpen] = useState(false);
+  const [issueTitle, setIssueTitle] = useState("");
+  const [isCreatingIssue, setIsCreatingIssue] = useState(false);
 
   const openMediaDialog = mediaConfig?.input
     ? () => { if (mediaDialogRef?.current) mediaDialogRef.current.open() }
@@ -115,7 +128,7 @@ const EditComponent = forwardRef((props: any, ref) => {
 
   const rootPath = useMemo(() => {
     if (!mediaConfig) return undefined;
-    
+
     if (!field.options?.path) return mediaConfig?.input;
 
     const normalizedPath = normalizePath(field.options.path);
@@ -228,6 +241,38 @@ const EditComponent = forwardRef((props: any, ref) => {
     if (editor.isActive({ textAlign: "right" })) return <AlignRight className="h-4 w-4" />;
     if (editor.isActive({ textAlign: "justify" })) return <AlignJustify className="h-4 w-4" />;
     return <AlignLeft className="h-4 w-4" />;
+  };
+
+  const handleCreateIssue = async () => {
+    if (!editor || !config || !issueTitle) return;
+
+    const selection = editor.state.selection;
+    const body = editor.state.doc.textBetween(selection.from, selection.to, "\n");
+
+    setIsCreatingIssue(true);
+    try {
+      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: issueTitle,
+          body: body,
+          labels: [],
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Failed to create issue: ${response.status}`);
+      const data = await response.json();
+      if (data.status !== "success") throw new Error(data.message);
+
+      toast.success(data.message || "Issue created successfully");
+      setIsIssueDialogOpen(false);
+      setIssueTitle("");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsCreatingIssue(false);
+    }
   };
 
   return (
@@ -409,6 +454,23 @@ const EditComponent = forwardRef((props: any, ref) => {
               type="button"
               variant="ghost"
               size="icon-xxs"
+              onClick={() => {
+                const selection = editor.state.selection;
+                const text = editor.state.doc.textBetween(selection.from, selection.to, "\n");
+                if (!text) {
+                  toast.error("Please select some text first");
+                  return;
+                }
+                setIsIssueDialogOpen(true);
+              }}
+              className="shrink-0"
+            >
+              <Bug className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xxs"
               onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
               className={cn("shrink-0", editor.isActive("code") ? "bg-muted" : "")}
             >
@@ -488,14 +550,47 @@ const EditComponent = forwardRef((props: any, ref) => {
           </div>
         </BubbleMenu>}
         <EditorContent editor={editor} />
-        {mediaConfig && <MediaDialog 
-          ref={mediaDialogRef} 
+        {mediaConfig && <MediaDialog
+          ref={mediaDialogRef}
           media={mediaConfig?.name}
           initialPath={rootPath}
           extensions={allowedExtensions}
-          selected={[]} 
-          onSubmit={handleMediaDialogSubmit} 
+          selected={[]}
+          onSubmit={handleMediaDialogSubmit}
         />}
+        <Dialog open={isIssueDialogOpen} onOpenChange={setIsIssueDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create GitHub Issue</DialogTitle>
+              <DialogDescription>
+                Create a new issue using the selected text as the description.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="issue-title">Title</Label>
+                <Input
+                  id="issue-title"
+                  placeholder="Issue title"
+                  value={issueTitle}
+                  onChange={(e) => setIssueTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateIssue();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsIssueDialogOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={handleCreateIssue} disabled={!issueTitle || isCreatingIssue}>
+                {isCreatingIssue ? "Creating..." : "Create Issue"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   )

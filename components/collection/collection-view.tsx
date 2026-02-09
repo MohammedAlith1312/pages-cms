@@ -59,6 +59,7 @@ export function CollectionView({
   const pathname = usePathname();
   const router = useRouter();
 
+
   const { config } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
