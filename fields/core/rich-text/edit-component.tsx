@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, useCallback, useRef, useState, useMemo } from "react";
+import { forwardRef, useCallback, useRef, useState, useMemo, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -75,6 +76,7 @@ import { extensionCategories, normalizePath } from "@/lib/utils/file";
 const EditComponent = forwardRef((props: any, ref) => {
   const { config } = useConfig();
   const { isPrivate } = useRepo();
+  const params = useParams();
 
   const { value, field, onChange } = props;
 
@@ -121,6 +123,8 @@ const EditComponent = forwardRef((props: any, ref) => {
   const [isIssueDialogOpen, setIsIssueDialogOpen] = useState(false);
   const [issueTitle, setIssueTitle] = useState("");
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
+  const [isClosingIssue, setIsClosingIssue] = useState(false);
+  const [existingIssueAttrs, setExistingIssueAttrs] = useState<any>(null);
 
   const openMediaDialog = mediaConfig?.input
     ? () => { if (mediaDialogRef?.current) mediaDialogRef.current.open() }
@@ -159,11 +163,43 @@ const EditComponent = forwardRef((props: any, ref) => {
           };
         }
       }).configure({ inline: true }),
-      Link.configure({
+      Link.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            'data-issue-number': {
+              default: null,
+              parseHTML: element => element.getAttribute('data-issue-number'),
+            },
+            'data-issue-state': {
+              default: 'open',
+              parseHTML: element => element.getAttribute('data-issue-state'),
+            },
+            'data-issue-title': {
+              default: null,
+              parseHTML: element => element.getAttribute('data-issue-title'),
+            },
+            class: {
+              default: null,
+              parseHTML: element => element.getAttribute('class'),
+            },
+          };
+        },
+        renderHTML({ HTMLAttributes }) {
+          const isIssue = !!HTMLAttributes['data-issue-number'];
+          const { class: className, ...rest } = HTMLAttributes;
+          const mergedClass = isIssue
+            ? Array.from(new Set([...(className?.split(' ') || []), 'gh-issue-link'])).filter(Boolean).join(' ')
+            : className;
+
+          return ['a', { ...rest, class: mergedClass }, 0];
+        },
+      }).configure({
         openOnClick: false,
         HTMLAttributes: {
           rel: null,
           target: null,
+          // Removed global class: 'gh-issue-link'
         }
       }),
       Placeholder.configure({
@@ -198,6 +234,71 @@ const EditComponent = forwardRef((props: any, ref) => {
       setContentReady(true);
     }
   });
+
+  const syncIssueStatuses = useCallback(async () => {
+    if (!editor || !config) return;
+
+    const issueNumbers: string[] = [];
+    editor.state.doc.descendants((node) => {
+      node.marks.forEach(mark => {
+        if (mark.type.name === 'link' && mark.attrs['data-issue-number']) {
+          const num = mark.attrs['data-issue-number'];
+          if (!issueNumbers.includes(num)) {
+            issueNumbers.push(num);
+          }
+        }
+      });
+    });
+
+    if (issueNumbers.length === 0) return;
+
+    try {
+      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues?numbers=${issueNumbers.join(',')}`);
+      const data = await response.json();
+
+      if (data.status === 'success' && Array.isArray(data.data)) {
+        data.data.forEach((issue: any) => {
+          editor.commands.command(({ tr }) => {
+            let modified = false;
+            tr.doc.descendants((node, pos) => {
+              const linkMark = node.marks.find(m => m.type.name === 'link');
+              if (linkMark && linkMark.attrs['data-issue-number'] === issue.number.toString()) {
+                const newState = issue.state;
+                const currentAttrs = linkMark.attrs;
+
+                if (currentAttrs['data-issue-state'] !== newState || currentAttrs['class'] !== 'gh-issue-link') {
+                  tr.addMark(pos, pos + node.nodeSize, editor.schema.marks.link.create({
+                    ...currentAttrs,
+                    'data-issue-state': newState,
+                    class: 'gh-issue-link'
+                  }));
+                  modified = true;
+                }
+              }
+            });
+            return modified;
+          });
+        });
+      }
+    } catch (error) {
+      console.error("Failed to sync issues:", error);
+    }
+  }, [editor, config]);
+
+  useEffect(() => {
+    if (isContentReady) {
+      syncIssueStatuses();
+    }
+
+    const handleFocus = () => {
+      syncIssueStatuses();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isContentReady, syncIssueStatuses]);
 
   const handleMediaDialogSubmit = useCallback(async (images: string[]) => {
     if (!mediaConfig) return;
@@ -246,8 +347,48 @@ const EditComponent = forwardRef((props: any, ref) => {
   const handleCreateIssue = async () => {
     if (!editor || !config || !issueTitle) return;
 
+    // If it's an existing issue and the title is the only thing we might be changing on the link
+    if (existingIssueAttrs) {
+      editor.chain()
+        .focus()
+        .extendMarkRange('link')
+        .setLink({
+          ...existingIssueAttrs,
+          'data-issue-title': issueTitle,
+          class: 'gh-issue-link'
+        } as any)
+        .run();
+
+      setIsIssueDialogOpen(false);
+      setExistingIssueAttrs(null);
+      setIssueTitle("");
+
+      // Also trigger a sync to make sure state is correct
+      syncIssueStatuses();
+      return;
+    }
+
     const selection = editor.state.selection;
-    const body = editor.state.doc.textBetween(selection.from, selection.to, "\n");
+    const text = editor.state.doc.textBetween(selection.from, selection.to, "\n");
+
+    // Double check for existing open issues in selection to prevent duplicates
+    let hasOpenIssue = false;
+    editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
+      if (node.marks.some(m => m.type.name === 'link' && m.attrs['data-issue-state'] === 'open')) {
+        hasOpenIssue = true;
+      }
+    });
+
+    if (hasOpenIssue && !existingIssueAttrs) {
+      toast.error("This selection already contains an open issue.");
+      return;
+    }
+
+    const body = text;
+
+    const pagePath = params.path ? decodeURIComponent(params.path as string) : '';
+    const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const fullBody = `${body}\n\n---\n**Context:**\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
 
     setIsCreatingIssue(true);
     try {
@@ -256,7 +397,7 @@ const EditComponent = forwardRef((props: any, ref) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: issueTitle,
-          body: body,
+          body: fullBody,
           labels: [],
         }),
       });
@@ -266,6 +407,22 @@ const EditComponent = forwardRef((props: any, ref) => {
       if (data.status !== "success") throw new Error(data.message);
 
       toast.success(data.message || "Issue created successfully");
+
+      const issue = data.data;
+      if (issue && issue.html_url) {
+        editor.chain()
+          .focus()
+          .extendMarkRange('link')
+          .setLink({
+            href: issue.html_url,
+            'data-issue-number': issue.number.toString(),
+            'data-issue-state': 'open',
+            'data-issue-title': issue.title,
+            class: 'gh-issue-link'
+          } as any)
+          .run();
+      }
+
       setIsIssueDialogOpen(false);
       setIssueTitle("");
     } catch (error: any) {
@@ -274,6 +431,58 @@ const EditComponent = forwardRef((props: any, ref) => {
       setIsCreatingIssue(false);
     }
   };
+
+  const handleCloseIssue = async () => {
+    if (!editor || !existingIssueAttrs || !config) return;
+
+    // 1. Optimistically update the editor UI immediately
+    editor.chain()
+      .focus()
+      .extendMarkRange('link')
+      .updateAttributes('link', { 'data-issue-state': 'closed' })
+      .run();
+
+    // 2. Update local state so UI reflects "Closed" immediately
+    setExistingIssueAttrs((prev: any) => prev ? { ...prev, 'data-issue-state': 'closed' } : null);
+
+    setIsClosingIssue(true);
+    try {
+      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: parseInt(existingIssueAttrs['data-issue-number']),
+          state: 'closed'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.status !== "success") {
+        // Permission error (Issues: Write)
+        console.error("GitHub sync failed:", data.message);
+        toast.error(`Sync Failed: ${data.message}. The link is closed locally, but to sync with GitHub you must enable "Issues: Write" in your GitHub App Permissions.`);
+
+        // We stay in the "Closed" local state, but close the dialog after a short delay
+        setTimeout(() => {
+          setIsIssueDialogOpen(false);
+          setExistingIssueAttrs(null);
+          setIssueTitle("");
+        }, 1500);
+      } else {
+        toast.success("Issue closed on GitHub and link updated");
+        setIsIssueDialogOpen(false);
+        setExistingIssueAttrs(null);
+        setIssueTitle("");
+        syncIssueStatuses(); // Only sync with GitHub on success
+      }
+    } catch (error: any) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setIsClosingIssue(false);
+    }
+  };
+
 
   return (
     <>
@@ -461,9 +670,28 @@ const EditComponent = forwardRef((props: any, ref) => {
                   toast.error("Please select some text first");
                   return;
                 }
+
+                // Detect existing issue in selection
+                let existingIssue: any = null;
+                editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
+                  const mark = node.marks.find(m => m.type.name === 'link' && m.attrs['data-issue-number']);
+                  if (mark) {
+                    existingIssue = mark.attrs;
+                  }
+                });
+
+                if (existingIssue) {
+                  setExistingIssueAttrs(existingIssue);
+                  setIssueTitle(existingIssue['data-issue-title'] || "");
+                } else {
+                  setExistingIssueAttrs(null);
+                  setIssueTitle("");
+                }
+
                 setIsIssueDialogOpen(true);
               }}
-              className="shrink-0"
+              className={cn("shrink-0", (editor.isActive('link') && editor.getAttributes('link')['data-issue-state'] === 'open') ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "")}
+              title="Create GitHub Issue"
             >
               <Bug className="h-4 w-4" />
             </Button>
@@ -561,12 +789,27 @@ const EditComponent = forwardRef((props: any, ref) => {
         <Dialog open={isIssueDialogOpen} onOpenChange={setIsIssueDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create GitHub Issue</DialogTitle>
+              <DialogTitle>{existingIssueAttrs ? `Update Issue Link (#${existingIssueAttrs['data-issue-number']})` : 'Create GitHub Issue'}</DialogTitle>
               <DialogDescription>
-                Create a new issue using the selected text as the description.
+                {existingIssueAttrs
+                  ? "Update the display title or sync status for this issue link."
+                  : "Create a new issue using the selected text as the description."}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {existingIssueAttrs && (
+                <div className={cn(
+                  "flex items-center gap-x-2 p-3 rounded-md border text-sm",
+                  existingIssueAttrs['data-issue-state'] === 'open'
+                    ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400"
+                    : "bg-muted border-muted text-muted-foreground"
+                )}>
+                  <Bug className="h-4 w-4" />
+                  <span className="font-medium">
+                    Status: {existingIssueAttrs['data-issue-state'] === 'open' ? 'Open' : 'Closed'}
+                  </span>
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="issue-title">Title</Label>
                 <Input
@@ -583,17 +826,32 @@ const EditComponent = forwardRef((props: any, ref) => {
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsIssueDialogOpen(false)}>Cancel</Button>
-              <Button type="button" onClick={handleCreateIssue} disabled={!issueTitle || isCreatingIssue}>
-                {isCreatingIssue ? "Creating..." : "Create Issue"}
-              </Button>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <div className="flex-1">
+                {existingIssueAttrs && existingIssueAttrs['data-issue-state'] === 'open' && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleCloseIssue}
+                    disabled={isClosingIssue}
+                    className="w-full sm:w-auto"
+                  >
+                    {isClosingIssue ? "Closing..." : "Close Issue"}
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsIssueDialogOpen(false)}>Cancel</Button>
+                <Button type="button" onClick={handleCreateIssue} disabled={!issueTitle || isCreatingIssue}>
+                  {isCreatingIssue ? "Creating..." : (existingIssueAttrs ? "Update Link" : "Create Issue")}
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
     </>
-  )
+  );
 });
 
 export { EditComponent };

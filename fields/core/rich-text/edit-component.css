@@ -6,8 +6,12 @@
   @apply outline-none ring-2 ring-ring ring-offset-2;
 }
 
-.ProseMirror > * {
-  @apply first:!mt-0 last:!mb-0;
+.ProseMirror>*:first-child {
+  @apply !mt-0;
+}
+
+.ProseMirror>*:last-child {
+  @apply !mb-0;
 }
 
 .ProseMirror h1 {
@@ -40,6 +44,27 @@
 
 .ProseMirror a {
   @apply font-medium text-primary underline decoration-dotted underline-offset-4;
+}
+
+.ProseMirror a.gh-issue-link {
+  @apply no-underline px-1 rounded border-b transition-colors;
+}
+
+.ProseMirror a.gh-issue-link:not([data-issue-state='closed']) {
+  @apply bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400;
+}
+
+.ProseMirror a.gh-issue-link[data-issue-state='closed'] {
+  @apply opacity-60 line-through bg-muted border-muted grayscale-[0.5] text-muted-foreground;
+}
+
+.ProseMirror a.gh-issue-link::before {
+  content: '🐞';
+  @apply mr-1 text-[0.8em] opacity-70;
+}
+
+.ProseMirror a.gh-issue-link:hover {
+  @apply bg-indigo-100 dark:bg-indigo-900/50;
 }
 
 .ProseMirror blockquote {
@@ -75,13 +100,13 @@
 }
 
 .tiptap p.is-empty::before {
-  @apply text-muted-foreground float-left	h-0 pointer-events-none	content-[attr(data-placeholder)];
+  @apply text-muted-foreground float-left h-0 pointer-events-none content-[attr(data-placeholder)];
 }
 
-.tiptap p > img + .ProseMirror-separator,
+.tiptap p>img+.ProseMirror-separator,
 .tiptap img.ProseMirror-separator,
-.tiptap p > img + .ProseMirror-separator + .ProseMirror-trailingBreak,
-.tiptap code > .ProseMirror-trailingBreak {
+.tiptap p>img+.ProseMirror-separator+.ProseMirror-trailingBreak,
+.tiptap code>.ProseMirror-trailingBreak {
   @apply !hidden;
 }
 
@@ -97,7 +122,7 @@
 }
 
 .tiptap img.ProseMirror-selectednode {
-  @apply ring-2 ring-ring ring-offset-2 ring-offset-background ;
+  @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
 }
 
 .tippy-box {

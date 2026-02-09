@@ -53,6 +53,9 @@ const write = (value: any, field: Field, config: Record<string, any>) => {
           node.nodeName === "IMG" && (node.getAttribute("width") || node.getAttribute("height"))
         ) ||
         (
+          node.nodeName === "A" && node.classList.contains("gh-issue-link")
+        ) ||
+        (
           ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6"].includes(node.nodeName) && (node.getAttribute("style") || node.getAttribute("class"))
         )
       ),
@@ -70,7 +73,7 @@ const write = (value: any, field: Field, config: Record<string, any>) => {
 
 const schema = (field: Field, configObject?: Record<string, any>) => {
   let zodSchema = z.string();
-  
+
   if (field.required) zodSchema = zodSchema.min(1, "This field is required");
   if (field.pattern) {
     if (typeof field.pattern === "string") {
@@ -81,7 +84,7 @@ const schema = (field: Field, configObject?: Record<string, any>) => {
   }
   if (field.options?.minlength) zodSchema = zodSchema.min(field.options.minlength as number, `Minimum length is ${field.options.minlength} characters`);
   if (field.options?.maxlength) zodSchema = zodSchema.max(field.options.maxlength as number, `Maximum length is ${field.options.maxlength} characters`);
-  
+
   return zodSchema;
 };
 

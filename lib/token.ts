@@ -16,7 +16,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { User } from "@/types/user";
 
 // Get a token for a user (including collagborators who need to provide an owner/repo scope).
-const getToken = cache(async (user: User, owner: string, repo: string) => {
+const getToken = async (user: User, owner: string, repo: string, forceRefresh = false) => {
   if (user.githubId) return await getUserToken();
 
   const permission = await db.query.collaboratorTable.findFirst({
@@ -27,17 +27,17 @@ const getToken = cache(async (user: User, owner: string, repo: string) => {
   });
   if (!permission) throw new Error(`You do not have permission to access "${owner}/${repo}".`);
 
-  const installationToken = await getInstallationToken(owner, repo);
+  const installationToken = await getInstallationToken(owner, repo, forceRefresh);
 
-  return installationToken
-});
+  return installationToken;
+};
 
 // Get the GitHub App installation token for a specific repository.
-const getInstallationToken = cache(async (owner: string, repo: string) => {
+const getInstallationToken = async (owner: string, repo: string, forceRefresh = false) => {
   const app = new App({
-		appId: process.env.GITHUB_APP_ID!,
-		privateKey: process.env.GITHUB_APP_PRIVATE_KEY!,
-	});
+    appId: process.env.GITHUB_APP_ID!,
+    privateKey: process.env.GITHUB_APP_PRIVATE_KEY!,
+  });
 
   const repoInstallation = await app.octokit.rest.apps.getRepoInstallation({ owner, repo });
   if (!repoInstallation) throw new Error(`Installation token not found for "${owner}/${repo}".`);
@@ -46,11 +46,9 @@ const getInstallationToken = cache(async (owner: string, repo: string) => {
     where: eq(githubInstallationTokenTable.installationId, repoInstallation.data.id)
   });
 
-  if (tokenData && Date.now() < tokenData.expiresAt.getTime() - 60_000) {
+  if (!forceRefresh && tokenData && Date.now() < tokenData.expiresAt.getTime() - 60_000) {
     const token = await decrypt(tokenData.ciphertext, tokenData.iv);
-    if (!token) throw new Error(`Token could not be retrieved and/or decrypted.`);
-
-    return token;
+    if (token) return token;
   }
 
   const installationToken = await app.octokit.rest.apps.createInstallationAccessToken({
@@ -58,7 +56,7 @@ const getInstallationToken = cache(async (owner: string, repo: string) => {
   });
 
   const { ciphertext, iv } = await encrypt(installationToken.data.token);
-    
+
   const expiresAt = new Date(installationToken.data.expires_at)
 
   if (tokenData) {
@@ -79,25 +77,39 @@ const getInstallationToken = cache(async (owner: string, repo: string) => {
   }
 
   return installationToken.data.token;
-});
+};
 
 // Get the GitHub user token.
-const getUserToken = cache(async () => {
+const getUserToken = async () => {
   const { user } = await getAuth();
-	if (!user) throw new Error("User not found");
+  if (!user) throw new Error("User not found");
   if (!user.githubId) throw new Error("User must be logged in with Github");
-  
+
   let token;
-  
+
   const tokenData = await db.query.githubUserTokenTable.findFirst({
     where: eq(githubUserTokenTable.userId, user.id)
   });
   if (!tokenData) throw new Error(`Token not found for user ${user.id}.`);
-  
+
   token = await decrypt(tokenData.ciphertext, tokenData.iv);
   if (!token) throw new Error(`Token could not be retrieved and/or decrypted.`);
 
   return token;
-});
+};
 
-export { getInstallationToken, getUserToken, getToken };
+const clearInstallationToken = async (owner: string, repo: string) => {
+  const app = new App({
+    appId: process.env.GITHUB_APP_ID!,
+    privateKey: process.env.GITHUB_APP_PRIVATE_KEY!,
+  });
+
+  const repoInstallation = await app.octokit.rest.apps.getRepoInstallation({ owner, repo });
+  if (repoInstallation) {
+    await db.delete(githubInstallationTokenTable).where(
+      eq(githubInstallationTokenTable.installationId, repoInstallation.data.id)
+    );
+  }
+};
+
+export { getInstallationToken, getUserToken, getToken, clearInstallationToken };
