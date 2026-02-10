@@ -46,27 +46,6 @@
   @apply font-medium text-primary underline decoration-dotted underline-offset-4;
 }
 
-.ProseMirror a.gh-issue-link {
-  @apply no-underline px-1 rounded border-b transition-colors;
-}
-
-.ProseMirror a.gh-issue-link:not([data-issue-state='closed']) {
-  @apply bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400;
-}
-
-.ProseMirror a.gh-issue-link[data-issue-state='closed'] {
-  @apply opacity-60 line-through bg-muted border-muted grayscale-[0.5] text-muted-foreground;
-}
-
-.ProseMirror a.gh-issue-link::before {
-  content: '🐞';
-  @apply mr-1 text-[0.8em] opacity-70;
-}
-
-.ProseMirror a.gh-issue-link:hover {
-  @apply bg-indigo-100 dark:bg-indigo-900/50;
-}
-
 .ProseMirror blockquote {
   @apply mt-6 border-l-2 pl-6 italic;
 }
@@ -131,4 +110,23 @@
 
 div[data-tippy-root] {
   @apply transition-all;
+}
+
+/* GitHub Issue Link Styling */
+.ProseMirror a.gh-issue-link {
+  @apply no-underline bg-primary/10 text-primary px-1 rounded-sm border-b-2 border-primary/30 transition-all hover:bg-primary/20;
+}
+
+.ProseMirror a.gh-issue-link::before {
+  content: " ";
+  @apply text-[10px] opacity-60 mr-0.5;
+}
+
+/* Closed issues inherit standard link styling but keep their data attributes */
+.ProseMirror a.gh-issue-link[data-issue-state='closed'] {
+  @apply bg-transparent border-transparent px-0 text-inherit no-underline font-normal cursor-text;
+}
+
+.ProseMirror a.gh-issue-link[data-issue-state='closed']::before {
+  content: none;
 }

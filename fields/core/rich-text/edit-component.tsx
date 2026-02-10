@@ -3,6 +3,7 @@
 import { forwardRef, useCallback, useRef, useState, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
+import { mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -25,7 +26,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -55,21 +55,12 @@ import {
   Quote,
   RemoveFormatting,
   Strikethrough,
-  Table as TableIcon,
-  Trash2,
-  Underline as UnderlineIcon,
-  Bug
+  Send,
+  Loader2,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { getSchemaByName } from "@/lib/schema";
 import { extensionCategories, normalizePath } from "@/lib/utils/file";
 
@@ -90,41 +81,28 @@ const EditComponent = forwardRef((props: any, ref) => {
 
   const allowedExtensions = useMemo(() => {
     if (!mediaConfig) return [];
-
     let extensions = extensionCategories['image'];
-
     const fieldExtensions = field.options?.extensions
       ? field.options.extensions
       : field.options?.categories
         ? field.options.categories.flatMap((category: string) => extensionCategories[category])
         : [];
-
     if (fieldExtensions.length) {
       extensions = extensions.filter(ext => fieldExtensions.includes(ext));
     }
-
     if (mediaConfig.extensions) {
       extensions = extensions.filter(ext => mediaConfig.extensions.includes(ext));
     }
-
     return extensions;
   }, [field.options?.extensions, field.options?.categories, mediaConfig]);
 
-  const mediaDialogRef = mediaConfig
-    ? useRef<MediaDialogHandle>(null)
-    : undefined;
-
+  const mediaDialogRef = mediaConfig ? useRef<MediaDialogHandle>(null) : undefined;
   const bubbleMenuRef = useRef<HTMLDivElement | null>(null);
-
   const [isContentReady, setContentReady] = useState(false);
-
   const [linkUrl, setLinkUrl] = useState("");
-  const [imageAlt, setImageAlt] = useState("");
-  const [isIssueDialogOpen, setIsIssueDialogOpen] = useState(false);
-  const [issueTitle, setIssueTitle] = useState("");
+  const [inlinePrompt, setInlinePrompt] = useState("");
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
-  const [isClosingIssue, setIsClosingIssue] = useState(false);
-  const [existingIssueAttrs, setExistingIssueAttrs] = useState<any>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const openMediaDialog = mediaConfig?.input
     ? () => { if (mediaDialogRef?.current) mediaDialogRef.current.open() }
@@ -132,26 +110,20 @@ const EditComponent = forwardRef((props: any, ref) => {
 
   const rootPath = useMemo(() => {
     if (!mediaConfig) return undefined;
-
     if (!field.options?.path) return mediaConfig?.input;
-
     const normalizedPath = normalizePath(field.options.path);
     const normalizedMediaPath = normalizePath(mediaConfig?.input);
-
     if (!normalizedPath.startsWith(normalizedMediaPath)) {
       console.warn(`"${field.options.path}" is not within media root "${mediaConfig?.input}". Defaulting to media root.`);
       return mediaConfig?.input;
     }
-
     return normalizedPath;
   }, [field.options?.path, mediaConfig?.input]);
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({
-        dropcursor: { width: 2 }
-      }),
+      StarterKit.configure({ dropcursor: { width: 2 } }),
       Image.extend({
         addAttributes() {
           return {
@@ -170,44 +142,38 @@ const EditComponent = forwardRef((props: any, ref) => {
             'data-issue-number': {
               default: null,
               parseHTML: element => element.getAttribute('data-issue-number'),
+              renderHTML: attributes => attributes['data-issue-number'] ? { 'data-issue-number': attributes['data-issue-number'] } : {},
             },
             'data-issue-state': {
               default: 'open',
               parseHTML: element => element.getAttribute('data-issue-state'),
+              renderHTML: attributes => attributes['data-issue-number'] ? { 'data-issue-state': attributes['data-issue-state'] || 'open' } : {},
             },
             'data-issue-title': {
               default: null,
               parseHTML: element => element.getAttribute('data-issue-title'),
+              renderHTML: attributes => attributes['data-issue-number'] ? { 'data-issue-title': attributes['data-issue-title'] } : {},
             },
             class: {
               default: null,
               parseHTML: element => element.getAttribute('class'),
+              renderHTML: attributes => {
+                const isIssue = !!attributes['data-issue-number'];
+                const classes = [attributes.class, isIssue ? 'gh-issue-link' : ''].filter(Boolean).join(' ');
+                return classes ? { class: classes } : {};
+              },
             },
           };
         },
         renderHTML({ HTMLAttributes }) {
-          const isIssue = !!HTMLAttributes['data-issue-number'];
-          const { class: className, ...rest } = HTMLAttributes;
-          const mergedClass = isIssue
-            ? Array.from(new Set([...(className?.split(' ') || []), 'gh-issue-link'])).filter(Boolean).join(' ')
-            : className;
-
-          return ['a', { ...rest, class: mergedClass }, 0];
+          return ['a', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
         },
       }).configure({
         openOnClick: false,
-        HTMLAttributes: {
-          rel: null,
-          target: null,
-          // Removed global class: 'gh-issue-link'
-        }
+        HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: null }
       }),
-      Placeholder.configure({
-        placeholder: "Type '/' for commands…",
-      }),
-      Commands.configure({
-        suggestion: suggestion(openMediaDialog)
-      }),
+      Placeholder.configure({ placeholder: "Type '/' for commands…" }),
+      Commands.configure({ suggestion: suggestion(openMediaDialog) }),
       Table,
       TableRow,
       TableHeader,
@@ -225,9 +191,7 @@ const EditComponent = forwardRef((props: any, ref) => {
             : value;
           editor.commands.setContent(initialContent || "<p></p>");
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.warn(errorMessage);
-          toast.error(`${errorMessage} Check if the image exists or if media configuration is correct.`);
+          console.warn(error);
           editor.commands.setContent(value);
         }
       }
@@ -238,14 +202,18 @@ const EditComponent = forwardRef((props: any, ref) => {
   const syncIssueStatuses = useCallback(async () => {
     if (!editor || !config) return;
 
+    const issueRegex = new RegExp(`https:\\/\\/github\\.com\\/${config.owner}\\/${config.repo}\\/issues\\/(\\d+)`, 'i');
     const issueNumbers: string[] = [];
+
     editor.state.doc.descendants((node) => {
       node.marks.forEach(mark => {
-        if (mark.type.name === 'link' && mark.attrs['data-issue-number']) {
-          const num = mark.attrs['data-issue-number'];
-          if (!issueNumbers.includes(num)) {
-            issueNumbers.push(num);
+        if (mark.type.name === 'link') {
+          let num = mark.attrs['data-issue-number'];
+          if (!num && mark.attrs.href) {
+            const match = mark.attrs.href.match(issueRegex);
+            if (match) num = match[1];
           }
+          if (num && !issueNumbers.includes(num)) issueNumbers.push(num);
         }
       });
     });
@@ -253,78 +221,73 @@ const EditComponent = forwardRef((props: any, ref) => {
     if (issueNumbers.length === 0) return;
 
     try {
-      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues?numbers=${issueNumbers.join(',')}`);
+      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues?numbers=${issueNumbers.join(',')}&t=${Date.now()}`, { cache: "no-store" });
       const data = await response.json();
 
       if (data.status === 'success' && Array.isArray(data.data)) {
-        data.data.forEach((issue: any) => {
-          editor.commands.command(({ tr }) => {
-            let modified = false;
-            tr.doc.descendants((node, pos) => {
-              const linkMark = node.marks.find(m => m.type.name === 'link');
-              if (linkMark && linkMark.attrs['data-issue-number'] === issue.number.toString()) {
-                const newState = issue.state;
-                const currentAttrs = linkMark.attrs;
-
-                if (currentAttrs['data-issue-state'] !== newState || currentAttrs['class'] !== 'gh-issue-link') {
-                  tr.addMark(pos, pos + node.nodeSize, editor.schema.marks.link.create({
-                    ...currentAttrs,
-                    'data-issue-state': newState,
-                    class: 'gh-issue-link'
-                  }));
-                  modified = true;
+        const issueMap = new Map<string, any>(data.data.map((issue: any) => [issue.number.toString(), issue]));
+        let saveNeeded = false;
+        editor.commands.command(({ tr }) => {
+          let modified = false;
+          tr.doc.descendants((node, pos) => {
+            const linkMark = node.marks.find(m => m.type.name === 'link');
+            if (linkMark) {
+              const currentAttrs = linkMark.attrs;
+              let issueNumber = currentAttrs['data-issue-number'];
+              if (!issueNumber && currentAttrs.href) {
+                const match = currentAttrs.href.match(issueRegex);
+                if (match) issueNumber = match[1];
+              }
+              if (issueNumber) {
+                const issue = issueMap.get(issueNumber);
+                if (issue) {
+                  const newState = (issue as any).state;
+                  const newTitle = (issue as any).title;
+                  if (currentAttrs['data-issue-state'] !== newState || !currentAttrs['class']?.includes('gh-issue-link')) {
+                    tr.addMark(pos, pos + node.nodeSize, editor.schema.marks.link.create({
+                      ...currentAttrs,
+                      'data-issue-number': issueNumber,
+                      'data-issue-state': newState,
+                      'data-issue-title': newTitle || currentAttrs['data-issue-title'],
+                      class: 'gh-issue-link'
+                    }));
+                    modified = true;
+                    saveNeeded = true;
+                  }
                 }
               }
-            });
-            return modified;
+            }
           });
+          return modified;
         });
+        if (saveNeeded) onChange(editor.getHTML());
       }
     } catch (error) {
-      console.error("Failed to sync issues:", error);
+      console.error('Failed to sync issue statuses:', error);
     }
-  }, [editor, config]);
+  }, [editor, config, onChange]);
 
   useEffect(() => {
-    if (isContentReady) {
-      syncIssueStatuses();
-    }
-
-    const handleFocus = () => {
-      syncIssueStatuses();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isContentReady, syncIssueStatuses]);
+    if (editor && editor.isEditable && isContentReady) syncIssueStatuses();
+  }, [editor?.isEditable, editor, isContentReady, syncIssueStatuses]);
 
   const handleMediaDialogSubmit = useCallback(async (images: string[]) => {
-    if (!mediaConfig) return;
-
-    if (config && editor) {
-      const content = await Promise.all(images.map(async (image) => {
-        try {
-          // Use unencoded path for API call, but encode for the final URL
-          const url = await getRawUrl(config.owner, config.repo, config.branch, mediaConfig?.name, image, isPrivate);
-          if (url) {
-            // Replace the unencoded path with encoded path in the URL
-            const encodedImage = image.split('/').map(encodeURIComponent).join('/');
-            const encodedUrl = url.replace(image, encodedImage);
-            return `<p><img src="${encodedUrl}"></p>`;
-          }
-          // return `<p><img src="${url}"></p>`;
-          return `<p><img src="" alt="${image}" class="border border-destructive bg-destructive/10 rounded-md" /></p>`;
-        } catch {
-          toast.error(`Failed to load image: ${image}`);
-          // Return a placeholder with error styling
-          return `<p><img src="" alt="${image}" class="border border-destructive bg-destructive/10 rounded-md" /></p>`;
+    if (!mediaConfig || !config || !editor) return;
+    const content = await Promise.all(images.map(async (image) => {
+      try {
+        const url = await getRawUrl(config.owner, config.repo, config.branch, mediaConfig?.name, image, isPrivate);
+        if (url) {
+          const encodedImage = image.split('/').map(encodeURIComponent).join('/');
+          const encodedUrl = url.replace(image, encodedImage);
+          return `<p><img src="${encodedUrl}"></p>`;
         }
-      }));
-      editor.chain().focus().insertContent(content.join('\n')).run();
-    }
-  }, [config, editor, isPrivate, mediaConfig?.name]);
+        return `<p><img src="" alt="${image}" /></p>`;
+      } catch {
+        return `<p><img src="" alt="${image}" /></p>`;
+      }
+    }));
+    editor.chain().focus().insertContent(content.join('\n')).run();
+  }, [config, editor, isPrivate, mediaConfig]);
 
   const getBlockIcon = (editor: any) => {
     if (editor.isActive("heading", { level: 1 })) return <Heading1 className="h-4 w-4" />;
@@ -332,526 +295,196 @@ const EditComponent = forwardRef((props: any, ref) => {
     if (editor.isActive("heading", { level: 3 })) return <Heading3 className="h-4 w-4" />;
     if (editor.isActive("bulletList")) return <List className="h-4 w-4" />;
     if (editor.isActive("orderedList")) return <ListOrdered className="h-4 w-4" />;
-    if (editor.isActive("codeBlock")) return <Code className="h-4 w-4" />;
-    if (editor.isActive("blockquote")) return <Quote className="h-4 w-4" />;
     return <Pilcrow className="h-4 w-4" />;
   };
 
-  const getAlignIcon = (editor: any) => {
-    if (editor.isActive({ textAlign: "center" })) return <AlignCenter className="h-4 w-4" />;
-    if (editor.isActive({ textAlign: "right" })) return <AlignRight className="h-4 w-4" />;
-    if (editor.isActive({ textAlign: "justify" })) return <AlignJustify className="h-4 w-4" />;
-    return <AlignLeft className="h-4 w-4" />;
-  };
-
-  const handleCreateIssue = async () => {
-    if (!editor || !config || !issueTitle) return;
-
-    // If it's an existing issue and the title is the only thing we might be changing on the link
-    if (existingIssueAttrs) {
-      editor.chain()
-        .focus()
-        .extendMarkRange('link')
-        .setLink({
-          ...existingIssueAttrs,
-          'data-issue-title': issueTitle,
-          class: 'gh-issue-link'
-        } as any)
-        .run();
-
-      setIsIssueDialogOpen(false);
-      setExistingIssueAttrs(null);
-      setIssueTitle("");
-
-      // Also trigger a sync to make sure state is correct
-      syncIssueStatuses();
-      return;
-    }
-
+  const handleIssueAction = async (action: 'create' | 'update' | 'close' | 'reopen', title?: string, description?: string) => {
+    if (!editor || !config) return;
     const selection = editor.state.selection;
-    const text = editor.state.doc.textBetween(selection.from, selection.to, "\n");
-
-    // Double check for existing open issues in selection to prevent duplicates
-    let hasOpenIssue = false;
-    editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
-      if (node.marks.some(m => m.type.name === 'link' && m.attrs['data-issue-state'] === 'open')) {
-        hasOpenIssue = true;
-      }
-    });
-
-    if (hasOpenIssue && !existingIssueAttrs) {
-      toast.error("This selection already contains an open issue.");
-      return;
-    }
-
-    const body = text;
-
+    const selectedText = editor.state.doc.textBetween(selection.from, selection.to, "\n");
     const pagePath = params.path ? decodeURIComponent(params.path as string) : '';
     const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
-    const fullBody = `${body}\n\n---\n**Context:**\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
 
-    setIsCreatingIssue(true);
-    try {
-      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: issueTitle,
-          body: fullBody,
-          labels: [],
-        }),
-      });
+    if (action === 'create') {
+      // Split the prompt by newline to separate Title and Description
+      const lines = description?.split('\n').map(l => l.trim()).filter(Boolean) || [];
+      const finalTitle = title || lines[0] || "New Issue";
+      const finalDescription = lines.length > 1 ? lines.slice(1).join('\n') : "No additional description provided.";
 
-      if (!response.ok) throw new Error(`Failed to create issue: ${response.status}`);
-      const data = await response.json();
-      if (data.status !== "success") throw new Error(data.message);
-
-      toast.success(data.message || "Issue created successfully");
-
-      const issue = data.data;
-      if (issue && issue.html_url) {
-        editor.chain()
-          .focus()
-          .extendMarkRange('link')
-          .setLink({
-            href: issue.html_url,
-            'data-issue-number': issue.number.toString(),
-            'data-issue-state': 'open',
-            'data-issue-title': issue.title,
-            class: 'gh-issue-link'
-          } as any)
-          .run();
-      }
-
-      setIsIssueDialogOpen(false);
-      setIssueTitle("");
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
-      setIsCreatingIssue(false);
+      const fullBody = `${finalDescription}\n\n---\n**Context:**\n- **Selected Text:** \`${selectedText || 'None'}\`\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
+      setIsCreatingIssue(true);
+      try {
+        const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: finalTitle, body: fullBody }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== "success") throw new Error(data.message || "Failed to create issue");
+        toast.success("Issue created successfully");
+        const issue = data.data;
+        editor.chain().focus().setLink({
+          href: issue.html_url,
+          'data-issue-number': issue.number.toString(),
+          'data-issue-state': 'open',
+          'data-issue-title': issue.title,
+          class: 'gh-issue-link'
+        } as any).run();
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally { setIsCreatingIssue(false); }
+    } else if (action === 'close' || action === 'reopen') {
+      const issueAttrs = editor.getAttributes('link');
+      const issueNumber = issueAttrs['data-issue-number'];
+      if (!issueNumber) return;
+      const newState = action === 'close' ? 'closed' : 'open';
+      setIsUpdatingStatus(true);
+      try {
+        const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ number: parseInt(issueNumber), state: newState }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== "success") throw new Error(data.message || `Failed to ${action} issue`);
+        toast.success(`Issue #${issueNumber} ${newState === 'closed' ? 'closed' : 'reopened'}`);
+        editor.chain().focus().extendMarkRange('link').updateAttributes('link', { 'data-issue-state': newState }).run();
+        syncIssueStatuses();
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally { setIsUpdatingStatus(false); }
     }
   };
 
-  const handleCloseIssue = async () => {
-    if (!editor || !existingIssueAttrs || !config) return;
+  const renderedBubbleMenu = useMemo(() => {
+    if (!editor) return null;
+    const issueAttrs = editor.getAttributes('link');
+    const isIssue = editor.isActive('link') && !!issueAttrs['data-issue-number'];
 
-    // 1. Optimistically update the editor UI immediately
-    editor.chain()
-      .focus()
-      .extendMarkRange('link')
-      .updateAttributes('link', { 'data-issue-state': 'closed' })
-      .run();
-
-    // 2. Update local state so UI reflects "Closed" immediately
-    setExistingIssueAttrs((prev: any) => prev ? { ...prev, 'data-issue-state': 'closed' } : null);
-
-    setIsClosingIssue(true);
-    try {
-      const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/github-issues`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          number: parseInt(existingIssueAttrs['data-issue-number']),
-          state: 'closed'
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data.status !== "success") {
-        // Permission error (Issues: Write)
-        console.error("GitHub sync failed:", data.message);
-        toast.error(`Sync Failed: ${data.message}. The link is closed locally, but to sync with GitHub you must enable "Issues: Write" in your GitHub App Permissions.`);
-
-        // We stay in the "Closed" local state, but close the dialog after a short delay
-        setTimeout(() => {
-          setIsIssueDialogOpen(false);
-          setExistingIssueAttrs(null);
-          setIssueTitle("");
-        }, 1500);
-      } else {
-        toast.success("Issue closed on GitHub and link updated");
-        setIsIssueDialogOpen(false);
-        setExistingIssueAttrs(null);
-        setIssueTitle("");
-        syncIssueStatuses(); // Only sync with GitHub on success
-      }
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`);
-    } finally {
-      setIsClosingIssue(false);
-    }
-  };
-
+    return (
+      <BubbleMenu editor={editor} tippyOptions={{ duration: 25, animation: "scale", maxWidth: "450px" }}>
+        <div className="flex flex-col rounded-xl bg-popover border border-border/50 shadow-2xl backdrop-blur-md overflow-hidden" ref={bubbleMenuRef}>
+          <div className="p-1.5 flex gap-x-1 items-center bg-muted/30 border-b border-border/40">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="xxs" className="gap-x-1 hover:bg-muted/50 text-xs py-1">
+                  {getBlockIcon(editor)}
+                  <ChevronsUpDown className="w-3 h-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" portalProps={{ container: bubbleMenuRef.current }}>
+                <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()} className="gap-x-1.5 text-xs"><Pilcrow className="h-3 w-3" /> Text</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 1 }).run()} className="gap-x-1.5 text-xs"><Heading1 className="h-3 w-3" /> Heading 1</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 2 }).run()} className="gap-x-1.5 text-xs"><Heading2 className="h-3 w-3" /> Heading 2</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 3 }).run()} className="gap-x-1.5 text-xs"><Heading3 className="h-3 w-3" /> Heading 3</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().toggleBulletList().run()} className="gap-x-1.5 text-xs"><List className="h-3 w-3" /> Bullet list</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => editor.chain().focus().toggleOrderedList().run()} className="gap-x-1.5 text-xs"><ListOrdered className="h-3 w-3" /> Numbered list</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="w-[1px] h-4 bg-border/40 mx-1" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="icon-xxs" className={cn("shrink-0 hover:bg-muted/50", editor.isActive("link") ? "bg-muted text-primary" : "")} onClick={() => setLinkUrl(editor.isActive("link") ? editor.getAttributes('link').href : "")}><Link2 className="h-4 w-4" /></Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-1 w-64 border-border/50 shadow-xl" sideOffset={8}>
+                <div className="flex gap-x-1 items-center">
+                  <Input
+                    className="h-8 flex-1 text-sm bg-muted/20 border-border/40"
+                    placeholder="URL (e.g. google.com)"
+                    value={linkUrl}
+                    onChange={e => setLinkUrl(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { if (linkUrl) { editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run(); } else { editor.chain().focus().extendMarkRange('link').unsetLink().run(); } } }}
+                  />
+                  <Button type="button" variant="ghost" size="xxs" className="shrink-0 hover:bg-primary hover:text-primary-foreground" onClick={() => linkUrl ? editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run() : editor.chain().focus().extendMarkRange('link').unsetLink().run()}>Link</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button type="button" variant="ghost" size="icon-xxs" onClick={() => editor.chain().focus().toggleBold().run()} className={cn("shrink-0 hover:bg-muted/50", editor.isActive("bold") ? "bg-muted text-primary px-1.5" : "")}><Bold className="h-4 w-4" /></Button>
+            <Button type="button" variant="ghost" size="icon-xxs" onClick={() => editor.chain().focus().toggleItalic().run()} className={cn("shrink-0 hover:bg-muted/50", editor.isActive("italic") ? "bg-muted text-primary" : "")}><Italic className="h-4 w-4" /></Button>
+            <Button type="button" variant="ghost" size="icon-xxs" onClick={() => editor.chain().focus().toggleStrike().run()} className={cn("shrink-0 hover:bg-muted/50", editor.isActive("strike") ? "bg-muted text-primary" : "")}><Strikethrough className="h-4 w-4" /></Button>
+            <Button type="button" variant="ghost" size="icon-xxs" onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} className="shrink-0 hover:bg-muted/50 text-muted-foreground"><RemoveFormatting className="h-4 w-4" /></Button>
+          </div>
+          <div className="p-3 bg-background flex flex-col gap-2">
+            {isIssue ? (
+              <div className="flex items-center justify-between gap-3 bg-muted/20 p-2 rounded-lg border border-border/30">
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Linked Issue</span>
+                  <span className="text-xs font-semibold truncate max-w-[240px]">#{issueAttrs['data-issue-number']} {issueAttrs['data-issue-title']}</span>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button variant="outline" size="xxs" className="h-7 text-[10px] px-2" onClick={() => window.open(issueAttrs.href, '_blank')}>View</Button>
+                  {issueAttrs['data-issue-state'] === 'closed' ? (
+                    <Button variant="outline" size="xxs" className="h-7 text-[10px] px-2 bg-green-500/10 text-green-500 border-green-500/20 hover:bg-green-500 hover:text-white" disabled={isUpdatingStatus} onClick={() => handleIssueAction('reopen')}>{isUpdatingStatus ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reopen'}</Button>
+                  ) : (
+                    <Button variant="destructive" size="xxs" className="h-7 text-[10px] px-2 bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white" disabled={isUpdatingStatus} onClick={() => handleIssueAction('close')}>{isUpdatingStatus ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Close'}</Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="relative flex flex-col gap-1.5">
+                <div className="relative">
+                  <Textarea
+                    placeholder="Enter issue description..."
+                    className="min-h-[80px] max-h-[160px] pr-8 text-sm bg-muted/5 border-border/40 focus-visible:ring-1 focus-visible:ring-primary/20 resize-none transition-all rounded-md"
+                    value={inlinePrompt}
+                    onChange={(e) => setInlinePrompt(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (inlinePrompt) handleIssueAction('create', undefined, inlinePrompt).then(() => setInlinePrompt("")); } }}
+                  />
+                  {inlinePrompt && (
+                    <button
+                      onClick={() => setInlinePrompt("")}
+                      className="absolute right-2 top-2 p-1 rounded-md hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex justify-between items-center px-0.5">
+                  <span className="text-[10px] text-muted-foreground/50 font-medium italic">⌘+Enter to create</span>
+                  <Button
+                    size="xxs"
+                    className="h-7 px-3 gap-1.5"
+                    disabled={isCreatingIssue || !inlinePrompt}
+                    onClick={() => handleIssueAction('create', undefined, inlinePrompt).then(() => setInlinePrompt(""))}
+                  >
+                    {isCreatingIssue ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    <span>Create Issue</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+            {isIssue && (
+              <div className="flex items-center justify-between px-1">
+                <p className="text-[9px] text-muted-foreground/60 italic font-medium">Text selection & context auto-attached</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </BubbleMenu>
+    );
+  }, [editor, inlinePrompt, linkUrl, isCreatingIssue, isUpdatingStatus]);
 
   return (
     <>
       <Skeleton className={cn("rounded-md h-[8.5rem]", isContentReady ? "hidden" : "")} />
       <div className={!isContentReady ? "hidden" : ""}>
-        {editor && <BubbleMenu editor={editor} tippyOptions={{ duration: 25, animation: "scale", maxWidth: "370px" }}>
-          <div className="p-1 rounded-md bg-popover border flex gap-x-[1px] items-center focus-visible:outline-none shadow-md" ref={bubbleMenuRef}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xxs"
-                  className="gap-x-1"
-                >
-                  {getBlockIcon(editor)}
-                  <ChevronsUpDown className="w-3 h-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" portalProps={{ container: bubbleMenuRef.current }}>
-                <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()} className="gap-x-1.5">
-                  <Pilcrow className="h-4 w-4" />
-                  Text
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 1 }).run()} className="gap-x-1.5">
-                  <Heading1 className="h-4 w-4" />
-                  Heading 1
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 2 }).run()} className="gap-x-1.5">
-                  <Heading2 className="h-4 w-4" />
-                  Heading 2
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().setNode("heading", { level: 3 }).run()} className="gap-x-1.5">
-                  <Heading3 className="h-4 w-4" />
-                  Heading 3
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().toggleBulletList().run()} className="gap-x-1.5">
-                  <List className="h-4 w-4" />
-                  Bulleted list
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().toggleOrderedList().run()} className="gap-x-1.5">
-                  <ListOrdered className="h-4 w-4" />
-                  Numbered list
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().toggleBlockquote().run()} className="gap-x-1.5">
-                  <Quote className="h-4 w-4" />
-                  Quote
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => editor.chain().focus().toggleCodeBlock().run()} className="gap-x-1.5">
-                  <Code className="h-4 w-4" />
-                  Code
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xxs"
-                  className={cn("shrink-0", editor.isActive("link") ? "bg-muted" : "")}
-                  onClick={() => setLinkUrl(editor.isActive("link") ? editor.getAttributes('link').href : "")}
-                >
-                  <Link2 className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-1">
-                <div className="flex gap-x-1 items-center">
-                  <Input
-                    className="h-8 flex-1"
-                    placeholder="e.g. http://pagescms.org"
-                    value={linkUrl}
-                    onChange={e => setLinkUrl(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xxs"
-                    className="shrink-0"
-                    onClick={() => linkUrl
-                      ? editor.chain().focus().extendMarkRange('link').setLink({ href: linkUrl }).run()
-                      : editor.chain().focus().extendMarkRange('link').unsetLink()
-                        .run()
-                    }
-                  >Link</Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xxs"
-                    className="shrink-0"
-                    onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink()
-                      .run()}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-            {(editor.isActive("paragraph") || editor.isActive("heading")) &&
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xxs"
-                    className="gap-x-1"
-                  >
-                    {getAlignIcon(editor)}
-                    <ChevronsUpDown className="w-3 h-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent portalProps={{ container: bubbleMenuRef.current }}>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("left").run()} className="gap-x-1.5">
-                    <AlignLeft className="h-4 w-4" />
-                    Align left
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("right").run()} className="gap-x-1.5">
-                    <AlignRight className="h-4 w-4" />
-                    Align right
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("center").run()} className="gap-x-1.5">
-                    <AlignCenter className="h-4 w-4" />
-                    Center
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("justify").run()} className="gap-x-1.5">
-                    <AlignJustify className="h-4 w-4" />
-                    Justify
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            }
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              className={cn("shrink-0", editor.isActive("bold") ? "bg-muted" : "")}
-            >
-              <Bold className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              className={cn("shrink-0", editor.isActive("italic") ? "bg-muted" : "")}
-            >
-              <Italic className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().toggleStrike().run()}
-              className={cn("shrink-0", editor.isActive("strike") ? "bg-muted" : "")}
-            >
-              <Strikethrough className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              className={cn("shrink-0", editor.isActive("underline") ? "bg-muted" : "")}
-            >
-              <UnderlineIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().toggleCode().run()}
-              className={cn("shrink-0", editor.isActive("code") ? "bg-muted" : "")}
-            >
-              <Code className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => {
-                const selection = editor.state.selection;
-                const text = editor.state.doc.textBetween(selection.from, selection.to, "\n");
-                if (!text) {
-                  toast.error("Please select some text first");
-                  return;
-                }
-
-                // Detect existing issue in selection
-                let existingIssue: any = null;
-                editor.state.doc.nodesBetween(selection.from, selection.to, (node) => {
-                  const mark = node.marks.find(m => m.type.name === 'link' && m.attrs['data-issue-number']);
-                  if (mark) {
-                    existingIssue = mark.attrs;
-                  }
-                });
-
-                if (existingIssue) {
-                  setExistingIssueAttrs(existingIssue);
-                  setIssueTitle(existingIssue['data-issue-title'] || "");
-                } else {
-                  setExistingIssueAttrs(null);
-                  setIssueTitle("");
-                }
-
-                setIsIssueDialogOpen(true);
-              }}
-              className={cn("shrink-0", (editor.isActive('link') && editor.getAttributes('link')['data-issue-state'] === 'open') ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "")}
-              title="Create GitHub Issue"
-            >
-              <Bug className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xxs"
-              onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-              className={cn("shrink-0", editor.isActive("code") ? "bg-muted" : "")}
-            >
-              <RemoveFormatting className="h-4 w-4" />
-            </Button>
-            {editor.isActive("table") &&
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xxs"
-                    className="gap-x-1"
-                  >
-                    <TableIcon className="h-4 w-4" />
-                    <ChevronsUpDown className="w-3 h-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" portalProps={{ container: bubbleMenuRef.current }}>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>Add a column</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>Add a row</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
-                    <span className="text-red-500">Delete column</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
-                    <span className="text-red-500">Delete row</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            }
-            {mediaConfig && editor.isActive("image") &&
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xxs"
-                    className="shrink-0 text-[0.6rem]"
-                    onClick={() => setImageAlt(editor.getAttributes('image').alt || "")}
-                  >
-                    ALT
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="p-1">
-                  <div className="flex gap-x-1 items-center">
-                    <Input
-                      className="h-8 flex-1"
-                      placeholder="Image description"
-                      value={imageAlt}
-                      onChange={e => setImageAlt(e.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xxs"
-                      className="shrink-0"
-                      onClick={() => {
-                        editor.chain().focus().updateAttributes('image', { alt: imageAlt }).run();
-                      }}
-                    >Set</Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xxs"
-                      className="shrink-0"
-                      onClick={() => {
-                        editor.chain().focus().updateAttributes('image', { alt: "" }).run();
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            }
-          </div>
-        </BubbleMenu>}
+        {renderedBubbleMenu}
         <EditorContent editor={editor} />
-        {mediaConfig && <MediaDialog
-          ref={mediaDialogRef}
-          media={mediaConfig?.name}
-          initialPath={rootPath}
-          extensions={allowedExtensions}
-          selected={[]}
-          onSubmit={handleMediaDialogSubmit}
-        />}
-        <Dialog open={isIssueDialogOpen} onOpenChange={setIsIssueDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{existingIssueAttrs ? `Update Issue Link (#${existingIssueAttrs['data-issue-number']})` : 'Create GitHub Issue'}</DialogTitle>
-              <DialogDescription>
-                {existingIssueAttrs
-                  ? "Update the display title or sync status for this issue link."
-                  : "Create a new issue using the selected text as the description."}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              {existingIssueAttrs && (
-                <div className={cn(
-                  "flex items-center gap-x-2 p-3 rounded-md border text-sm",
-                  existingIssueAttrs['data-issue-state'] === 'open'
-                    ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400"
-                    : "bg-muted border-muted text-muted-foreground"
-                )}>
-                  <Bug className="h-4 w-4" />
-                  <span className="font-medium">
-                    Status: {existingIssueAttrs['data-issue-state'] === 'open' ? 'Open' : 'Closed'}
-                  </span>
-                </div>
-              )}
-              <div className="grid gap-2">
-                <Label htmlFor="issue-title">Title</Label>
-                <Input
-                  id="issue-title"
-                  placeholder="Issue title"
-                  value={issueTitle}
-                  onChange={(e) => setIssueTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleCreateIssue();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <DialogFooter className="gap-2 sm:gap-0">
-              <div className="flex-1">
-                {existingIssueAttrs && existingIssueAttrs['data-issue-state'] === 'open' && (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={handleCloseIssue}
-                    disabled={isClosingIssue}
-                    className="w-full sm:w-auto"
-                  >
-                    {isClosingIssue ? "Closing..." : "Close Issue"}
-                  </Button>
-                )}
-              </div>
-              <div className="flex gap-x-2">
-                <Button type="button" variant="outline" onClick={() => setIsIssueDialogOpen(false)}>Cancel</Button>
-                <Button type="button" onClick={handleCreateIssue} disabled={!issueTitle || isCreatingIssue}>
-                  {isCreatingIssue ? "Creating..." : (existingIssueAttrs ? "Update Link" : "Create Issue")}
-                </Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {mediaConfig && (
+          <MediaDialog
+            ref={mediaDialogRef}
+            media={mediaConfig?.name}
+            initialPath={rootPath}
+            extensions={allowedExtensions}
+            selected={[]}
+            onSubmit={handleMediaDialogSubmit}
+          />
+        )}
       </div>
     </>
   );
 });
+
+EditComponent.displayName = "EditComponent";
 
 export { EditComponent };

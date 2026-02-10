@@ -53,7 +53,7 @@ const write = (value: any, field: Field, config: Record<string, any>) => {
           node.nodeName === "IMG" && (node.getAttribute("width") || node.getAttribute("height"))
         ) ||
         (
-          node.nodeName === "A" && node.classList.contains("gh-issue-link")
+          node.nodeName === "A" && node.getAttribute("class")?.includes("gh-issue-link")
         ) ||
         (
           ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6"].includes(node.nodeName) && (node.getAttribute("style") || node.getAttribute("class"))
