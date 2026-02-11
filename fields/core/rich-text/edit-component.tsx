@@ -245,7 +245,11 @@ const EditComponent = forwardRef((props: any, ref) => {
                 if (issue) {
                   const newState = (issue as any).state;
                   const newTitle = (issue as any).title;
-                  if (currentAttrs['data-issue-state'] !== newState || !currentAttrs['class']?.includes('gh-issue-link')) {
+                  if (newState === 'closed') {
+                    tr.removeMark(pos, pos + node.nodeSize, linkMark.type);
+                    modified = true;
+                    saveNeeded = true;
+                  } else if (currentAttrs['data-issue-state'] !== newState || !currentAttrs['class']?.includes('gh-issue-link')) {
                     tr.addMark(pos, pos + node.nodeSize, editor.schema.marks.link.create({
                       ...currentAttrs,
                       'data-issue-number': issueNumber,
@@ -311,7 +315,7 @@ const EditComponent = forwardRef((props: any, ref) => {
     if (action === 'create') {
       // Split the prompt by newline to separate Title and Description
       const lines = description?.split('\n').map(l => l.trim()).filter(Boolean) || [];
-      const finalTitle = title || lines[0] || (selectedText ? (selectedText.length > 60 ? selectedText.slice(0, 60) + "..." : selectedText) : "New Issue");
+      const finalTitle = title || lines[0] || (selectedText ? (selectedText.length > 10 ? selectedText.slice(0, 10) + "..." : selectedText) : "New Issue");
       const finalDescription = lines.length > 1 ? lines.slice(1).join('\n') : "No additional description provided.";
 
       const fullBody = `${finalDescription}\n\n---\n**Context:**\n- **Selected Text:** \`${selectedText || 'None'}\`\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
@@ -351,8 +355,12 @@ const EditComponent = forwardRef((props: any, ref) => {
         const data = await response.json();
         if (!response.ok || data.status !== "success") throw new Error(data.message || `Failed to ${action} issue`);
         toast.success(`Issue #${issueNumber} ${newState === 'closed' ? 'closed' : 'reopened'}`);
-        editor.chain().focus().extendMarkRange('link').updateAttributes('link', { 'data-issue-state': newState }).run();
-        syncIssueStatuses();
+        if (newState === 'closed') {
+          editor.chain().focus().extendMarkRange('link').unsetLink().run();
+        } else {
+          editor.chain().focus().extendMarkRange('link').updateAttributes('link', { 'data-issue-state': newState }).run();
+          syncIssueStatuses();
+        }
       } catch (err: any) {
         toast.error(err.message);
       } finally { setIsUpdatingStatus(false); }
@@ -416,9 +424,7 @@ const EditComponent = forwardRef((props: any, ref) => {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button variant="outline" size="xxs" className="h-7 text-[10px] px-2" onClick={() => window.open(issueAttrs.href, '_blank')}>View</Button>
-                  {issueAttrs['data-issue-state'] === 'closed' ? (
-                    <Button variant="outline" size="xxs" className="h-7 text-[10px] px-2 bg-green-500/10 text-green-500 border-green-500/20 hover:bg-green-500 hover:text-white" disabled={isUpdatingStatus} onClick={() => handleIssueAction('reopen')}>{isUpdatingStatus ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Reopen'}</Button>
-                  ) : (
+                  {issueAttrs['data-issue-state'] !== 'closed' && (
                     <Button variant="destructive" size="xxs" className="h-7 text-[10px] px-2 bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white" disabled={isUpdatingStatus} onClick={() => handleIssueAction('close')}>{isUpdatingStatus ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Close'}</Button>
                   )}
                 </div>
