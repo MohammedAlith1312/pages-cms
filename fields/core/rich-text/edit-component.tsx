@@ -425,10 +425,13 @@ const EditComponent = forwardRef((props: any, ref) => {
               </div>
             ) : (
               <div className="relative flex flex-col gap-1.5">
-                <div className="relative">
+                <div className="relative grid w-full">
+                  <div className="col-start-1 row-start-1 whitespace-pre-wrap break-words min-w-0 invisible pointer-events-none min-h-[80px] max-h-[160px] pr-8 text-sm px-3 py-2 border border-transparent rounded-md font-sans">
+                    {inlinePrompt + " "}
+                  </div>
                   <Textarea
                     placeholder="Enter issue description..."
-                    className="min-h-[80px] max-h-[160px] pr-8 text-sm bg-muted/5 border-border/40 focus-visible:ring-1 focus-visible:ring-primary/20 resize-none transition-all rounded-md"
+                    className="col-start-1 row-start-1 h-full min-h-[80px] max-h-[160px] pr-8 text-sm bg-muted/5 border-border/40 focus-visible:ring-1 focus-visible:ring-primary/20 resize-none transition-all rounded-md overflow-hidden"
                     value={inlinePrompt}
                     onChange={(e) => setInlinePrompt(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (inlinePrompt) handleIssueAction('create', undefined, inlinePrompt).then(() => setInlinePrompt("")); } }}
@@ -436,7 +439,7 @@ const EditComponent = forwardRef((props: any, ref) => {
                   {inlinePrompt && (
                     <button
                       onClick={() => setInlinePrompt("")}
-                      className="absolute right-2 top-2 p-1 rounded-md hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                      className="absolute right-2 top-2 p-1 rounded-md hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground transition-colors z-10"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
