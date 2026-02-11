@@ -315,8 +315,19 @@ const EditComponent = forwardRef((props: any, ref) => {
     if (action === 'create') {
       // Split the prompt by newline to separate Title and Description
       const lines = description?.split('\n').map(l => l.trim()).filter(Boolean) || [];
-      const finalTitle = title || lines[0] || (selectedText ? (selectedText.length > 10 ? selectedText.slice(0, 10) + "..." : selectedText) : "New Issue");
-      const finalDescription = lines.length > 1 ? lines.slice(1).join('\n') : "No additional description provided.";
+
+      let finalTitle = title;
+      let finalDescription = "No additional description provided.";
+
+      if (!finalTitle) {
+        if (selectedText) {
+          finalTitle = selectedText.length > 10 ? selectedText.slice(0, 10) + "..." : selectedText;
+          finalDescription = description || finalDescription;
+        } else {
+          finalTitle = lines[0] || "New Issue";
+          finalDescription = lines.length > 1 ? lines.slice(1).join('\n') : finalDescription;
+        }
+      }
 
       const fullBody = `${finalDescription}\n\n---\n**Context:**\n- **Selected Text:** \`${selectedText || 'None'}\`\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
       setIsCreatingIssue(true);
