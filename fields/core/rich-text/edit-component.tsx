@@ -103,6 +103,7 @@ const EditComponent = forwardRef((props: any, ref) => {
   const [inlinePrompt, setInlinePrompt] = useState("");
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [selectionTick, setSelectionTick] = useState(0);
 
   const openMediaDialog = mediaConfig?.input
     ? () => { if (mediaDialogRef?.current) mediaDialogRef.current.open() }
@@ -183,6 +184,7 @@ const EditComponent = forwardRef((props: any, ref) => {
     ],
     content: "<p></p>",
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onSelectionUpdate: () => setSelectionTick(t => t + 1),
     onCreate: async ({ editor }) => {
       if (config && value) {
         try {
@@ -305,10 +307,11 @@ const EditComponent = forwardRef((props: any, ref) => {
     const pagePath = params.path ? decodeURIComponent(params.path as string) : '';
     const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
 
+
     if (action === 'create') {
       // Split the prompt by newline to separate Title and Description
       const lines = description?.split('\n').map(l => l.trim()).filter(Boolean) || [];
-      const finalTitle = title || lines[0] || "New Issue";
+      const finalTitle = title || lines[0] || (selectedText ? (selectedText.length > 60 ? selectedText.slice(0, 60) + "..." : selectedText) : "New Issue");
       const finalDescription = lines.length > 1 ? lines.slice(1).join('\n') : "No additional description provided.";
 
       const fullBody = `${finalDescription}\n\n---\n**Context:**\n- **Selected Text:** \`${selectedText || 'None'}\`\n- **File:** \`${pagePath}\`\n- **Editor:** [Link](${pageUrl})`;
@@ -444,7 +447,7 @@ const EditComponent = forwardRef((props: any, ref) => {
                   <Button
                     size="xxs"
                     className="h-7 px-3 gap-1.5"
-                    disabled={isCreatingIssue || !inlinePrompt}
+                    disabled={isCreatingIssue}
                     onClick={() => handleIssueAction('create', undefined, inlinePrompt).then(() => setInlinePrompt(""))}
                   >
                     {isCreatingIssue ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
@@ -462,7 +465,7 @@ const EditComponent = forwardRef((props: any, ref) => {
         </div>
       </BubbleMenu>
     );
-  }, [editor, inlinePrompt, linkUrl, isCreatingIssue, isUpdatingStatus]);
+  }, [editor, inlinePrompt, linkUrl, isCreatingIssue, isUpdatingStatus, selectionTick]);
 
   return (
     <>
