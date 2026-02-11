@@ -453,8 +453,8 @@ const EditComponent = forwardRef((props: any, ref) => {
                     disabled={isCreatingIssue}
                     onClick={() => handleIssueAction('create', undefined, inlinePrompt).then(() => setInlinePrompt(""))}
                   >
-                    {isCreatingIssue ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                    <span>Create Issue</span>
+                    {isCreatingIssue ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>Create Issue</span>}
+
                   </Button>
                 </div>
               </div>
