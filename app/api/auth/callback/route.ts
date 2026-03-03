@@ -1,7 +1,12 @@
-import { github } from "@/lib/auth";
+import { github, lucia } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { isRepoCollaborator } from "@/lib/githubIssues";
 import { getInstallationToken } from "@/lib/token";
+import { generateIdFromEntropySize } from "lucia";
+import { encrypt } from "@/lib/crypto";
+import { db } from "@/db";
+import { userTable, githubUserTokenTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 /**
  * Direct GitHub OAuth callback for Documentation/Docsify.
@@ -50,6 +55,38 @@ export async function GET(request: Request): Promise<Response> {
             console.warn(`Auth Proxy: ACCESS DENIED — ${githubUser.login} is not a collaborator on ${owner}/${repo}`);
             return Response.redirect(`${redirectTo}/login.html?auth_error=unauthorized`, 302);
         }
+
+        // --- UNIFIED SESSION: Create/Update CMS User & Session ---
+        const { ciphertext, iv } = await encrypt(accessToken);
+        const existingUser = await db.query.userTable.findFirst({
+            where: eq(userTable.githubId, Number(githubUser.id))
+        });
+
+        let currentUserId: string;
+
+        if (existingUser) {
+            currentUserId = existingUser.id as string;
+            await db.update(githubUserTokenTable).set({
+                ciphertext, iv
+            }).where(eq(githubUserTokenTable.userId, currentUserId));
+        } else {
+            currentUserId = generateIdFromEntropySize(10);
+            await db.insert(userTable).values({
+                id: currentUserId,
+                githubId: Number(githubUser.id),
+                githubUsername: githubUser.login,
+                githubEmail: githubUser.email,
+                githubName: githubUser.name || githubUser.login
+            });
+            await db.insert(githubUserTokenTable).values({
+                ciphertext, iv, userId: currentUserId
+            });
+        }
+
+        const session = await lucia.createSession(currentUserId, {});
+        const sessionCookie = lucia.createSessionCookie(session.id);
+        cookies().set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
+        // ---------------------------------------------------------
 
         // 4. Redirect back to frontend with token and info
         const params = new URLSearchParams({
