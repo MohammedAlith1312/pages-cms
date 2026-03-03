@@ -17,14 +17,7 @@ export async function GET(request: Request): Promise<Response> {
         scopes: ["repo", "read:user", "user:email"]
     });
 
-    // Determine the host for the callback
-    const host = request.headers.get("host");
-    const protocol = request.headers.get("x-forwarded-proto") || "http";
-    const callbackBase = `${protocol}://${host}`;
-
-    // Override the redirect_uri to point to our proxy callback
     const finalAuthUrl = new URL(authUrl.toString());
-    finalAuthUrl.searchParams.set("redirect_uri", `${callbackBase}/api/auth/callback`);
 
     cookies().set("github_oauth_state", state, {
         path: "/",

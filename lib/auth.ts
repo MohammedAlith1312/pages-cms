@@ -47,8 +47,8 @@ export interface DatabaseUserAttributes {
 }
 
 const redirectUri = process.env.NODE_ENV === "production"
-	? "https://pages-cms-ten-psi.vercel.app/api/auth/github"
-	: "http://localhost:3000/api/auth/github";
+	? "https://pages-cms-ten-psi.vercel.app/api/auth/callback"
+	: "http://localhost:3000/api/auth/callback";
 
 export const github = new GitHub(
 	process.env.GITHUB_APP_CLIENT_ID!,
