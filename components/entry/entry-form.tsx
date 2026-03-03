@@ -599,15 +599,28 @@ const EntryForm = ({
       if (!path || !path.startsWith("docs/") || !path.endsWith(".md") || !config) return;
 
       try {
-        const response = await fetch(`/api/repos/${config.owner}/${config.repo}/pages`);
-        const result = await response.json();
+        // If running locally, skip the GitHub Pages API and use localhost:5000 directly
+        const isLocal =
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
         let baseUrl = "";
-        if (result.status === "success" && result.data?.html_url) {
-          baseUrl = result.data.html_url;
+
+        if (isLocal) {
+          // Local development: point to local Docsify server
+          // 'docsify serve docs' serves from root, so no sub-path needed
+          baseUrl = `http://localhost:5000`;
         } else {
-          // Fallback to default github.io URL
-          baseUrl = `https://${config.owner}.github.io/${config.repo}`;
+          // Production: fetch actual GitHub Pages URL
+          const response = await fetch(`/api/repos/${config.owner}/${config.repo}/pages`);
+          const result = await response.json();
+
+          if (result.status === "success" && result.data?.html_url) {
+            baseUrl = result.data.html_url;
+          } else {
+            // Fallback to default github.io URL
+            baseUrl = `https://${config.owner}.github.io/${config.repo}`;
+          }
         }
 
         const url = getDocsifyPreviewUrl(baseUrl, path);

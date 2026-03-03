@@ -61,3 +61,49 @@ export const updateIssue = async (
     });
     return response.data;
 };
+
+export const createComment = async (
+    token: string,
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    body: string
+) => {
+    const octokit = createOctokitInstance(token);
+    const response = await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body,
+    });
+    return response.data;
+};
+
+export const parseDocsifyIssue = (issue: any) => {
+    const body = issue.body || '';
+    let extractedText = '';
+
+    const contextMatch = body.match(/\*\*(?:Selected Context|Selected Text|Selected Image):\*\*\n(>\s*|)(.*)/i);
+    if (contextMatch) {
+        extractedText = contextMatch[2].trim();
+    } else {
+        if (body.includes('**Selected Text:**\n> ')) extractedText = body.split('**Selected Text:**\n> ')[1]?.split('\n')[0]?.trim();
+        else if (body.includes('**Selected Image:**\n')) extractedText = body.split('**Selected Image:**\n')[1]?.split('\n')[0]?.trim();
+    }
+
+    const urlMatch = body.match(/(?:\*\*URL:\*\*|URL:)[\s\r\n]*(http[^\s]+)/i);
+    const pageUrl = urlMatch ? urlMatch[1].trim() : '';
+
+    return {
+        id: `issue-${issue.id}`,
+        issueNumber: issue.number,
+        title: issue.title,
+        body: body,
+        url: issue.html_url,
+        pageUrl: pageUrl,
+        selectedText: extractedText || 'No direct text reference',
+        state: (issue.state || 'open').toLowerCase(),
+        createdAt: issue.created_at,
+        updatedAt: issue.updated_at,
+    };
+};
