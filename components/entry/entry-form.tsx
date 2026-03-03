@@ -19,7 +19,8 @@ import {
 import { Field } from "@/types/field";
 import { EntryHistoryBlock, EntryHistoryDropdown } from "./entry-history";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, getDocsifyPreviewUrl } from "@/lib/utils";
+import { useConfig } from "@/contexts/config-context";
 import {
   Form,
   FormControl,
@@ -69,7 +70,9 @@ import {
   Trash2,
   Ellipsis,
   ChevronRight,
+
   Dot,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { interpolate } from "@/lib/schema";
@@ -96,7 +99,7 @@ const SortableItem = ({
     transform: CSS.Translate.toString(transform),
     transition
   };
-  
+
   return (
     <div ref={setNodeRef} className={cn("flex gap-x-2 items-center", isDragging ? "opacity-50 z-50" : "z-10")} style={style}>
       <Button type="button" variant="ghost" size="icon-sm" className="h-auto w-5 bg-muted/50 self-stretch rounded-md text-muted-foreground cursor-move" {...attributes} {...listeners}>
@@ -117,17 +120,17 @@ const ListField = ({
   renderFields: Function;
 }) => {
   const isCollapsible = !!(field.list && !(typeof field.list === 'object' && field.list?.collapsible === false));
-  
+
   const { setValue, watch } = useFormContext();
   const { fields: arrayFields, append, remove, move } = useFieldArray({
     name: fieldName,
   });
   const fieldValues = watch(fieldName);
-  
+
   // Use an index-to-state map with a ref to survive re-renders
   const openStatesRef = useRef<boolean[]>([]);
   const [, forceUpdate] = useState({});
-  
+
   useEffect(() => {
     if (openStatesRef.current.length === 0 && arrayFields.length > 0) {
       const defaultCollapsed =
@@ -136,12 +139,12 @@ const ListField = ({
         field.list.collapsible &&
         typeof field.list.collapsible === 'object' &&
         field.list.collapsible.collapsed;
-      
+
       openStatesRef.current = Array(arrayFields.length).fill(!defaultCollapsed);
       forceUpdate({});
     }
   }, [arrayFields.length, field.list]);
-  
+
   const toggleOpen = (index: number) => {
     if (index >= 0 && index < openStatesRef.current.length) {
       openStatesRef.current[index] = !openStatesRef.current[index];
@@ -154,20 +157,20 @@ const ListField = ({
     if (active.id !== over.id) {
       const oldIndex = arrayFields.findIndex(item => item.id === active.id);
       const newIndex = arrayFields.findIndex(item => item.id === over.id);
-      
+
       // Reorder the open states array the same way as the items
       const newOpenStates = [...openStatesRef.current];
       const [movedState] = newOpenStates.splice(oldIndex, 1);
       newOpenStates.splice(newIndex, 0, movedState);
       openStatesRef.current = newOpenStates;
-      
+
       // Perform the move
       move(oldIndex, newIndex);
-      
+
       // Update form values
       const updatedValues = arrayMove(fieldValues, oldIndex, newIndex);
       setValue(fieldName, updatedValues);
-      
+
       // Force update to reflect the reordered open states
       forceUpdate({});
     }
@@ -187,7 +190,7 @@ const ListField = ({
     openStatesRef.current.splice(index, 1);
     forceUpdate({});
   };
-  
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -211,13 +214,13 @@ const ListField = ({
           <div className="flex items-center h-5 gap-x-2">
             {field.label !== false &&
               <FormLabel className="text-sm font-medium">
-                {field.label || field.name}   
+                {field.label || field.name}
               </FormLabel>
             }
             {field.required && (
               <span className="inline-flex items-center rounded-full bg-muted border px-2 h-5 text-xs font-medium">Required</span>
             )}
-            
+
             {
               isCollapsible && arrayFields.length > 0 && (
                 <DropdownMenu>
@@ -227,7 +230,7 @@ const ListField = ({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => toggleAll(true)}>
+                    <DropdownMenuItem onClick={() => toggleAll(true)}>
                       Collapse all
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => toggleAll(false)}>
@@ -271,15 +274,15 @@ const ListField = ({
             {typeof field.list === 'object' && field.list?.max && arrayFields.length >= field.list.max
               ? null
               : <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addItem}
-                  className="gap-x-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add an item
-                </Button>
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addItem}
+                className="gap-x-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add an item
+              </Button>
             }
             <FormMessage />
           </div>
@@ -293,9 +296,9 @@ const BlocksField = forwardRef((props: any, ref) => {
   const { field, fieldName, renderFields, isOpen, onToggleOpen, index } = props;
 
   const isCollapsible = !!(field.list && !(typeof field.list === 'object' && field.list?.collapsible === false));
-  
+
   const { setValue, watch, formState: { errors } } = useFormContext();
-  
+
   const value = watch(fieldName);
   const onChange = (val: any) => {
     setValue(fieldName, val, { shouldDirty: true });
@@ -335,11 +338,11 @@ const BlocksField = forwardRef((props: any, ref) => {
     index: index !== undefined ? `${index + 1}` : '',
     fields: fieldValues,
   }
-  const itemLabel = 
-    typeof field.list === 'object' && 
-    field.list.collapsible && 
-    typeof field.list.collapsible === 'object' && 
-    field.list.collapsible.summary
+  const itemLabel =
+    typeof field.list === 'object' &&
+      field.list.collapsible &&
+      typeof field.list.collapsible === 'object' &&
+      field.list.collapsible.summary
       ? interpolate(field.list.collapsible.summary, interpolateData)
       : `Item ${index !== undefined ? `#${index + 1}` : ''}`;
 
@@ -370,8 +373,8 @@ const BlocksField = forwardRef((props: any, ref) => {
         <div className="border rounded-lg">
           <header
             className={cn(
-              "flex items-center gap-x-2 px-4 h-10 text-sm font-medium transition-colors rounded-t-lg", 
-              isOpen ? 'border-b' : 'rounded-b-lg', 
+              "flex items-center gap-x-2 px-4 h-10 text-sm font-medium transition-colors rounded-t-lg",
+              isOpen ? 'border-b' : 'rounded-b-lg',
               isCollapsible ? 'cursor-pointer hover:bg-muted' : ''
             )}
             onClick={isCollapsible ? onToggleOpen : undefined}
@@ -384,7 +387,7 @@ const BlocksField = forwardRef((props: any, ref) => {
             )}
             <div className="inline-flex items-center gap-x-0.5 text-muted-foreground">
               <span className={hasErrors() ? 'text-red-500' : ''}>{selectedBlockDefinition.label || selectedBlockDefinition.name}</span>
-              
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" type="button" size="icon-xs" className="text-muted-foreground hover:text-foreground bg-transparent">
@@ -426,8 +429,8 @@ const BlocksField = forwardRef((props: any, ref) => {
 BlocksField.displayName = 'BlocksField';
 
 const ObjectField = forwardRef((props: any, ref) => {
-  const { field, fieldName, renderFields, isOpen = true, onToggleOpen = () => {}, index } = props;
-  
+  const { field, fieldName, renderFields, isOpen = true, onToggleOpen = () => { }, index } = props;
+
   const isCollapsible = !!(field.list && !(typeof field.list === 'object' && field.list?.collapsible === false));
 
   const { watch, formState: { errors } } = useFormContext();
@@ -442,14 +445,14 @@ const ObjectField = forwardRef((props: any, ref) => {
     index: index !== undefined ? `${index + 1}` : '',
     fields: fieldValues,
   }
-  const itemLabel = 
-    typeof field.list === 'object' && 
-    field.list.collapsible && 
-    typeof field.list.collapsible === 'object' && 
-    field.list.collapsible.summary
+  const itemLabel =
+    typeof field.list === 'object' &&
+      field.list.collapsible &&
+      typeof field.list.collapsible === 'object' &&
+      field.list.collapsible.summary
       ? interpolate(field.list.collapsible.summary, interpolateData)
       : `Item ${index !== undefined ? `#${index + 1}` : ''}`;
-  
+
   return (
     <div className="border rounded-lg">
       {isCollapsible && (
@@ -473,7 +476,7 @@ const SingleField = ({
   renderFields,
   showLabel = true,
   isOpen = true,
-  toggleOpen = () => {},
+  toggleOpen = () => { },
   index = 0
 }: {
   field: Field;
@@ -485,7 +488,7 @@ const SingleField = ({
   index?: number;
 }) => {
   const { control, formState: { errors } } = useFormContext();
-  
+
   let FieldComponent;
 
   const isCollapsible = !!(field.list && !(typeof field.list === 'object' && field.list?.collapsible === false));
@@ -508,7 +511,7 @@ const SingleField = ({
       fieldComponentProps = { ...fieldComponentProps, onToggleOpen: toggleOpen, index };
     }
   }
-  
+
   if (['object', 'block'].includes(field.type)) {
     const hasErrors = () => {
       let curr: any = errors;
@@ -550,7 +553,7 @@ const SingleField = ({
               {showLabel && field.required && <span className="inline-flex items-center rounded-full bg-muted border px-2 h-5 text-xs font-medium">Required</span>}
             </div>
             <FormControl>
-              <FieldComponent 
+              <FieldComponent
                 {...rhfManagedFieldProps}
                 {...fieldComponentProps}
               />
@@ -588,6 +591,34 @@ const EntryForm = ({
   options: React.ReactNode;
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const { config } = useConfig();
+
+  useEffect(() => {
+    async function fetchPagesInfo() {
+      if (!path || !path.startsWith("docs/") || !path.endsWith(".md") || !config) return;
+
+      try {
+        const response = await fetch(`/api/repos/${config.owner}/${config.repo}/pages`);
+        const result = await response.json();
+
+        let baseUrl = "";
+        if (result.status === "success" && result.data?.html_url) {
+          baseUrl = result.data.html_url;
+        } else {
+          // Fallback to default github.io URL
+          baseUrl = `https://${config.owner}.github.io/${config.repo}`;
+        }
+
+        const url = getDocsifyPreviewUrl(baseUrl, path);
+        setPreviewUrl(url);
+      } catch (error) {
+        console.error("Failed to fetch pages info", error);
+      }
+    }
+
+    fetchPagesInfo();
+  }, [path, config]);
 
   const zodSchema = useMemo(() => {
     return generateZodSchema(fields);
@@ -652,7 +683,7 @@ const EntryForm = ({
 
               <h1 className="font-semibold text-lg md:text-2xl truncate">{title}</h1>
             </header>
-            
+
             <div onSubmit={form.handleSubmit(handleSubmit)} className="grid items-start gap-6">
               {filePath &&
                 <div className="space-y-2 overflow-hidden">
@@ -673,6 +704,13 @@ const EntryForm = ({
                   Save
                   {isSubmitting && (<Loader className="ml-2 h-4 w-4 animate-spin" />)}
                 </Button>
+                {previewUrl && (
+                  <Button variant="outline" size="icon" className="shrink-0" asChild>
+                    <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
                 {options ? options : null}
               </div>
               {path && history && <EntryHistoryBlock history={history} path={path} />}
@@ -680,6 +718,13 @@ const EntryForm = ({
           </div>
           <div className="lg:hidden fixed top-0 right-0 h-14 flex items-center gap-x-2 z-10 pr-4 md:pr-6">
             {path && history && <EntryHistoryDropdown history={history} path={path} />}
+            {previewUrl && (
+              <Button variant="outline" size="icon" className="shrink-0" asChild>
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Button>
+            )}
             <Button type="submit" disabled={isSubmitting}>
               Save
               {isSubmitting && (<Loader className="ml-2 h-4 w-4 animate-spin" />)}

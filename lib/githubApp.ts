@@ -46,7 +46,7 @@ const getInstallations = async (
         return matchedInstallations;
       }
     }
-    
+
     hasMore = (page * perPage <= response.data.total_count);
     page++;
   }
@@ -98,7 +98,7 @@ const getInstallationRepos = async (
         return matchedRepos;
       }
     }
-    
+
     hasMore = (page * perPage <= response.data.total_count);
     page++;
   }
@@ -106,4 +106,24 @@ const getInstallationRepos = async (
   return matchedRepos.length ? matchedRepos : allRepos;
 };
 
-export { getInstallations, getInstallationRepos };
+
+// Get GitHub Pages information for a repository.
+const getRepoPagesInfo = async (
+  token: string,
+  owner: string,
+  repo: string
+) => {
+  try {
+    const octokit = createOctokitInstance(token);
+    const response = await octokit.rest.repos.getPages({
+      owner,
+      repo,
+    });
+    return response.data;
+  } catch (error) {
+    // Return null if Pages is not enabled or other errors occur
+    return null;
+  }
+};
+
+export { getInstallations, getInstallationRepos, getRepoPagesInfo };
