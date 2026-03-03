@@ -46,7 +46,15 @@ export interface DatabaseUserAttributes {
 	email: string;
 }
 
-export const github = new GitHub(process.env.GITHUB_APP_CLIENT_ID!, process.env.GITHUB_APP_CLIENT_SECRET!);
+const redirectUri = process.env.NODE_ENV === "production"
+	? "https://pages-cms-ten-psi.vercel.app/api/auth/github"
+	: "http://localhost:3000/api/auth/github";
+
+export const github = new GitHub(
+	process.env.GITHUB_APP_CLIENT_ID!,
+	process.env.GITHUB_APP_CLIENT_SECRET!,
+	{ redirectURI: redirectUri }
+);
 
 export const getAuth = cache(
 	async (): Promise<{ user: User; session: Session } | { user: null; session: null }> => {
@@ -69,7 +77,7 @@ export const getAuth = cache(
 				const sessionCookie = lucia.createBlankSessionCookie();
 				cookies().set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
 			}
-		} catch {}
+		} catch { }
 		return result;
 	}
 );

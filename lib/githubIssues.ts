@@ -1,5 +1,28 @@
 import { createOctokitInstance } from "@/lib/utils/octokit";
 
+export const isRepoCollaborator = async (
+    token: string,
+    owner: string,
+    repo: string,
+    username: string
+) => {
+    try {
+        const octokit = createOctokitInstance(token);
+        const res = await octokit.rest.repos.checkCollaborator({
+            owner,
+            repo,
+            username,
+        });
+        // 204 = is a collaborator
+        return res.status === 204;
+    } catch (err: any) {
+        // 404 = not a collaborator, anything else = error
+        if (err.status === 404) return false;
+        console.error("Auth: Collaborator check error:", err.message);
+        return false;
+    }
+};
+
 export const getIssues = async (
     token: string,
     owner: string,

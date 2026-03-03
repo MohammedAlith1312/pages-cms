@@ -73,11 +73,19 @@ const handleEmailSignIn = async (prevState: any, formData: FormData) => {
 };
 
 // Redirect to the GitHub sign in page.
-const handleGithubSignIn = async () => {
+const handleGithubSignIn = async (redirectTo: string = "/") => {
   const state = generateState();
   const url = await github.createAuthorizationURL(state, { scopes: ["repo", "user:email"] });
 
   cookies().set("github_oauth_state", state, {
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+    maxAge: 60 * 10,
+    sameSite: "lax"
+  });
+
+  cookies().set("github_oauth_redirect", redirectTo, {
     path: "/",
     secure: process.env.NODE_ENV === "production",
     httpOnly: true,

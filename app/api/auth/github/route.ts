@@ -41,6 +41,9 @@ export async function GET(request: Request): Promise<Response> {
 
 		const { ciphertext, iv } = await encrypt(token.accessToken);
 
+		const redirectTo = cookies().get("github_oauth_redirect")?.value || "/";
+		cookies().delete("github_oauth_redirect");
+
 		const existingUser = await db.query.userTable.findFirst({
 			where: eq(userTable.githubId, Number(githubUser.id))
 		});
@@ -57,7 +60,7 @@ export async function GET(request: Request): Promise<Response> {
 			return new Response(null, {
 				status: 302,
 				headers: {
-					Location: "/"
+					Location: redirectTo
 				}
 			});
 		}
@@ -83,7 +86,7 @@ export async function GET(request: Request): Promise<Response> {
 		return new Response(null, {
 			status: 302,
 			headers: {
-				Location: "/"
+				Location: redirectTo
 			}
 		});
 	} catch (e) {
