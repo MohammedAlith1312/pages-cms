@@ -1,4 +1,4 @@
-import { github } from "@/lib/auth";
+import { githubDocs } from "@/lib/auth";
 import { generateState } from "arctic";
 import { cookies } from "next/headers";
 
@@ -13,7 +13,7 @@ export async function GET(request: Request): Promise<Response> {
     const redirectUrl = url.searchParams.get("redirect") || "/";
 
     const state = generateState();
-    const authUrl = await github.createAuthorizationURL(state, {
+    const authUrl = await githubDocs.createAuthorizationURL(state, {
         scopes: ["repo", "read:user", "user:email"]
     });
 

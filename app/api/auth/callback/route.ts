@@ -1,16 +1,11 @@
-import { github, lucia } from "@/lib/auth";
+import { githubDocs } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { isRepoCollaborator } from "@/lib/githubIssues";
 import { getInstallationToken } from "@/lib/token";
-import { generateIdFromEntropySize } from "lucia";
-import { encrypt } from "@/lib/crypto";
-import { db } from "@/db";
-import { userTable, githubUserTokenTable } from "@/db/schema";
-import { eq } from "drizzle-orm";
 
 /**
  * Direct GitHub OAuth callback for Documentation/Docsify.
- * Replicates the logic of the old standalone backend.
+ * Proxy route that returns tokens to the frontend without setting CMS cookies.
  * 
  * GET /api/auth/callback
  */
@@ -31,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
 
     try {
         // 1. Exchange code for access token
-        const token = await github.validateAuthorizationCode(code);
+        const token = await githubDocs.validateAuthorizationCode(code);
         const accessToken = token.accessToken;
 
         // 2. Fetch user profile
@@ -43,11 +38,10 @@ export async function GET(request: Request): Promise<Response> {
         const githubUser = await githubUserResponse.json();
 
         // 3. Collaborator Check
-        // We need owner and repo. We'll use the ones from env or fall back to defaults.
         const owner = process.env.GITHUB_OWNER || "MohammedAlith1312";
         const repo = process.env.GITHUB_REPO || "document-in-docsify";
 
-        // Use App token to check collaborator (requires installation)
+        // Use App token to check collaborator
         const appToken = await getInstallationToken(owner, repo);
         const isAuthorized = await isRepoCollaborator(appToken, owner, repo, githubUser.login);
 
@@ -56,39 +50,8 @@ export async function GET(request: Request): Promise<Response> {
             return Response.redirect(`${redirectTo}/login.html?auth_error=unauthorized`, 302);
         }
 
-        // --- UNIFIED SESSION: Create/Update CMS User & Session ---
-        const { ciphertext, iv } = await encrypt(accessToken);
-        const existingUser = await db.query.userTable.findFirst({
-            where: eq(userTable.githubId, Number(githubUser.id))
-        });
-
-        let currentUserId: string;
-
-        if (existingUser) {
-            currentUserId = existingUser.id as string;
-            await db.update(githubUserTokenTable).set({
-                ciphertext, iv
-            }).where(eq(githubUserTokenTable.userId, currentUserId));
-        } else {
-            currentUserId = generateIdFromEntropySize(10);
-            await db.insert(userTable).values({
-                id: currentUserId,
-                githubId: Number(githubUser.id),
-                githubUsername: githubUser.login,
-                githubEmail: githubUser.email,
-                githubName: githubUser.name || githubUser.login
-            });
-            await db.insert(githubUserTokenTable).values({
-                ciphertext, iv, userId: currentUserId
-            });
-        }
-
-        const session = await lucia.createSession(currentUserId, {});
-        const sessionCookie = lucia.createSessionCookie(session.id);
-        cookies().set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
-        // ---------------------------------------------------------
-
         // 4. Redirect back to frontend with token and info
+        // We do NOT set any Lucia session cookies here.
         const params = new URLSearchParams({
             access_token: accessToken,
             login: githubUser.login,
@@ -96,9 +59,7 @@ export async function GET(request: Request): Promise<Response> {
             avatar_url: githubUser.avatar_url,
         });
 
-        // Ensure redirectTo doesn't have a trailing slash if we're adding one, or handle carefully
         const targetUrl = redirectTo.endsWith('/') ? redirectTo.slice(0, -1) : redirectTo;
-
         return Response.redirect(`${targetUrl}?${params.toString()}`, 302);
 
     } catch (e) {
